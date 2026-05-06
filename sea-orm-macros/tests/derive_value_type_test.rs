@@ -13,7 +13,7 @@ fn when_user_alias_result_macro_still_works_test() {
 }
 
 #[test]
-fn when_stringy_newtype_works_test() {
+fn when_simple_newtype_works_test() {
     #[allow(dead_code)]
     #[derive(sea_orm::DeriveValueType)]
     #[sea_orm(value_type = "String")]
@@ -59,6 +59,7 @@ fn when_explicit_stringy_newtype_works_test() {
 
 #[test]
 fn when_custom_from_str_works() {
+    #[allow(dead_code)]
     #[derive(sea_orm::DeriveValueType)]
     #[sea_orm(
         value_type = "String",

@@ -1,4 +1,4 @@
-use super::{ActiveValue, ActiveValue::*};
+use super::ActiveValue;
 use crate::{
     ColumnTrait, Condition, ConnectionTrait, DbBackend, DeleteResult, EntityName, EntityTrait,
     IdenStatic, Iterable, PrimaryKeyArity, PrimaryKeyToColumn, PrimaryKeyTrait, QueryFilter,
@@ -456,7 +456,7 @@ pub trait ActiveModelTrait: Clone + Debug {
         for (col, active_value) in primary_key_values {
             match active_value {
                 ActiveValue::Unchanged(v) | ActiveValue::Set(v) => self.set(col, v),
-                NotSet => self.not_set(col),
+                ActiveValue::NotSet => self.not_set(col),
             }
         }
 

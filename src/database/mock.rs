@@ -432,7 +432,7 @@ mod tests {
         DbBackend, DbErr, IntoMockRow, MockDatabase, Statement, Transaction, TransactionError,
         TransactionTrait, entity::*, error::*, tests_cfg::*,
     };
-    use futures_util::{TryStreamExt, stream::TryNext};
+    use futures_util::TryStreamExt;
     use pretty_assertions::assert_eq;
 
     #[derive(Debug, PartialEq, Eq)]

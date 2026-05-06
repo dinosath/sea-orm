@@ -3,18 +3,23 @@ pub mod service;
 
 use axum::{
     Router,
+    Json,
     extract::{Form, Path, Query, State},
     http::StatusCode,
+    middleware,
     response::Html,
     routing::{get, get_service, post},
 };
-use entity::post;
+use entity::{post, tenant_post};
 use flash::{PostResponse, get_flash_cookie, post_response};
 use migration::{Migrator, MigratorTrait};
-use sea_orm::{Database, DatabaseConnection};
+use sea_orm::{
+    Database, DatabaseConnection,
+    tenant::{MultiTenantConfig, TenantContext, tenant_middleware_from_config},
+};
 use serde::{Deserialize, Serialize};
-use service::{Mutation, Query as QueryService};
-use std::env;
+use service::{Mutation, Query as QueryService, TenantPostService};
+use std::{env, sync::Arc};
 use tera::Tera;
 use tower_cookies::{CookieManagerLayer, Cookies};
 use tower_http::services::ServeDir;
@@ -40,13 +45,32 @@ async fn start() -> anyhow::Result<()> {
     let templates = Tera::new(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/**/*"))
         .expect("Tera initialization failed");
 
-    let state = AppState { templates, conn };
+    let tenant_config = Arc::new(
+        MultiTenantConfig::builder()
+            .row_level(conn.clone())
+            .default_header_resolver()
+            .build()
+            .expect("tenant config"),
+    );
+    let state = AppState {
+        templates,
+        conn,
+        tenant_config: tenant_config.clone(),
+    };
+
+    let tenant_routes = Router::new()
+        .route("/posts", get(list_tenant_posts).post(create_tenant_post))
+        .route_layer(middleware::from_fn({
+            let tenant_config = tenant_config.clone();
+            move |request, next| tenant_middleware_from_config(request, next, tenant_config.clone())
+        }));
 
     let app = Router::new()
         .route("/", get(list_posts).post(create_post))
         .route("/{id}", get(edit_post).post(update_post))
         .route("/new", get(new_post))
         .route("/delete/{id}", post(delete_post))
+        .nest("/tenant", tenant_routes)
         .nest_service(
             "/static",
             get_service(ServeDir::new(concat!(
@@ -73,6 +97,7 @@ async fn start() -> anyhow::Result<()> {
 struct AppState {
     templates: Tera,
     conn: DatabaseConnection,
+    tenant_config: Arc<MultiTenantConfig>,
 }
 
 #[derive(Deserialize)]
@@ -85,6 +110,12 @@ struct Params {
 struct FlashData {
     kind: String,
     message: String,
+}
+
+#[derive(Deserialize)]
+struct TenantPostInput {
+    title: String,
+    text: String,
 }
 
 async fn list_posts(
@@ -201,6 +232,36 @@ async fn delete_post(
     };
 
     Ok(post_response(&mut cookies, data))
+}
+
+async fn list_tenant_posts(
+    state: State<AppState>,
+    tenant: TenantContext,
+) -> Result<Json<Vec<tenant_post::Model>>, (StatusCode, String)> {
+    TenantPostService::list_posts(&state.tenant_config, tenant)
+        .await
+        .map(Json)
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))
+}
+
+async fn create_tenant_post(
+    state: State<AppState>,
+    tenant: TenantContext,
+    Json(input): Json<TenantPostInput>,
+) -> Result<Json<tenant_post::Model>, (StatusCode, String)> {
+    TenantPostService::create_post(
+        &state.tenant_config,
+        tenant,
+        tenant_post::Model {
+            id: 0,
+            tenant_id: String::new(),
+            title: input.title,
+            text: input.text,
+        },
+    )
+    .await
+    .map(Json)
+    .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))
 }
 
 pub fn main() {

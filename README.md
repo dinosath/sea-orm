@@ -200,6 +200,126 @@ let user: Option<user::Model> = user::Entity::find()
 
 See the [quickstart example](https://github.com/SeaQL/sea-orm/blob/master/sea-orm-sync/examples/quickstart/src/main.rs) for usage.
 
+## Multi-Tenancy
+
+SeaORM includes explicit, async-safe multitenancy primitives behind the `tenant` feature, with optional Axum integration behind `with-axum`.
+
+Supported strategies:
+
++ Database-per-tenant via `TenantPoolManager`
++ Schema-per-tenant on PostgreSQL via `SchemaTenantConnection`
++ Row-level tenancy via `RowLevelTenantConnection`, `TenantEntity`, and `TenantScopedActiveModel`
+
+The recommended SeaORM 2.x path is to mark the tenant discriminator directly on the entity model with `#[sea_orm(tenant_key)]`. That auto-derives `TenantScoped`, auto-generates the entity's `tenant_filter(..)` helper, and auto-generates `TenantScopedActiveModel` so inserts are stamped safely.
+
+The API is intentionally explicit: tenant identity is represented by `TenantId` and `TenantContext`, queries are routed through tenant-aware wrappers, and no thread-local or global mutable state is involved.
+
+Compile-time guardrails are available through `TenantScoped`, `TenantQueryExt`, `tenant::find::<E>(..)`, `TenantConnectionProvider`, and `TenantScopedExecutor`, so tenant-aware repositories, services, jobs, and migrations can all share one explicit tenant scope.
+
+```rust
+# use sea_orm::entity::prelude::*;
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "tenant_post")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(tenant_key)]
+    pub tenant_id: String,
+    pub title: String,
+}
+
+impl ActiveModelBehavior for ActiveModel {}
+```
+
+```rust
+use sea_orm::{EntityTrait, tenant::RowLevelTenantConnection, tenant::TenantContext};
+
+let tenant = TenantContext::new("acme")?;
+let tenant_db = RowLevelTenantConnection::row_level(db.clone(), tenant);
+let posts = tenant_db.find(tenant_post::Entity::find()).await?;
+```
+
+You can still build typed repositories explicitly when you prefer that style:
+
+```rust
+use sea_orm::tenant::{RowLevelTenantConnection, TenantContext};
+
+let tenant = TenantContext::new("acme")?;
+let tenant_db = RowLevelTenantConnection::row_level(db.clone(), tenant);
+let posts = tenant_db.repository::<tenant_post::Entity>().all().await?;
+```
+
+If you need query composition without executing immediately, `TenantQueryExt` is available too:
+
+```rust
+use sea_orm::{EntityTrait, tenant::TenantQueryExt};
+
+let query = tenant_post::Entity::find().with_tenant("acme".to_owned());
+```
+
+For Axum services, `tenant_middleware` and `HeaderTenantResolver` let you inject both `TenantContext` and `TenantId` into request extensions and extract them explicitly in handlers.
+
+You can also bootstrap tenancy from a single configuration object instead of manually instantiating each strategy wrapper:
+
+```rust
+use sea_orm::{Database, DbErr, MultiTenantConfig, TenantContext};
+
+# async fn example() -> Result<(), DbErr> {
+let shared = Database::connect("sqlite::memory:").await?;
+
+let tenancy = MultiTenantConfig::builder()
+    .row_level(shared)
+    .default_header_resolver()
+    .build()?;
+
+let tenant_db = tenancy
+    .connection_for(TenantContext::new("acme")?)
+    .await?;
+
+assert_eq!(tenant_db.tenant().tenant_id(), "acme");
+
+let guarded = tenant_db.guarded_row_level().expect("row-level strategy");
+let _posts = guarded.repository::<tenant_post::Entity>().all().await?;
+# Ok(())
+# }
+```
+
+When `with-axum` is enabled, the same `MultiTenantConfig` can also resolve the request tenant for `tenant_middleware_from_config`, so HTTP extraction and database routing stay in one explicit configuration path.
+
+You can also run service and background-job logic inside an explicit tenant boundary:
+
+```rust
+use sea_orm::tenant::{MultiTenantConfig, TenantContext, TenantJob, TenantScopedExecutor};
+
+# async fn example(config: &MultiTenantConfig) -> Result<(), sea_orm::DbErr> {
+let job = TenantJob::new(TenantContext::new("acme")?, "refresh-cache");
+
+config
+    .with_tenant(job.tenant().clone(), |scope, executor| {
+        Box::pin(async move {
+            assert_eq!(scope.tenant_id().to_string(), "acme");
+            assert!(executor.is_row_level());
+            Ok(())
+        })
+    })
+    .await?;
+# Ok(())
+# }
+```
+
+For per-tenant bootstrap work and migrations, `TenantMigrationRunner` keeps schema-per-tenant operations on one stable SQL session while still working for database-per-tenant and row-level setups.
+
+Example request against the Axum example's tenant route:
+
+```bash
+curl \
+    -H 'X-Tenant-ID: acme' \
+    http://127.0.0.1:8000/tenant/posts
+```
+
+That request only returns rows visible to the `acme` tenant when using the row-level strategy.
+
 ## Basics
 
 ### Select

@@ -1,0 +1,6 @@
+error: exactly one #[sea_orm(tenant_key)] field is allowed
+  --> tests/ui/tenant_duplicate_key.rs:10:5
+   |
+10 | /     #[sea_orm(tenant_key)]
+11 | |     pub workspace_id: String,
+   | |____________________________^

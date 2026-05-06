@@ -33,6 +33,7 @@ pub async fn insert_metadata(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     assert_eq!(result, metadata);
 
+    #[allow(unused_mut)]
     let mut json = metadata::Entity::find()
         .filter(metadata::Column::Uuid.eq(metadata.uuid))
         .into_json()

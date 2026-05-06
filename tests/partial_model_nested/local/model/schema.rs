@@ -1,7 +1,9 @@
+#![allow(dead_code)]
+
 use crate::common::setup::create_table;
 use crate::local::{bakery, worker};
 use sea_orm::{DatabaseConnection, DbConn, ExecResult, error::*, sea_query};
-use sea_query::{ColumnDef, ForeignKey, ForeignKeyAction, Index, Table};
+use sea_query::{ColumnDef, ForeignKey, Table};
 
 pub async fn create_tables(db: &DatabaseConnection) -> Result<(), DbErr> {
     create_worker_table(db).await?;

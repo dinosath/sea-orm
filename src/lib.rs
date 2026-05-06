@@ -718,6 +718,10 @@ pub mod query;
 pub mod rbac;
 /// Types that defines the schemas of an Entity
 pub mod schema;
+/// Explicit multi-tenancy support
+#[cfg(feature = "tenant")]
+#[cfg_attr(docsrs, doc(cfg(feature = "tenant")))]
+pub mod tenant;
 /// Helpers for working with Value
 pub mod value;
 
@@ -734,6 +738,8 @@ pub use error::*;
 pub use executor::*;
 pub use query::*;
 pub use schema::*;
+#[cfg(feature = "tenant")]
+pub use tenant::*;
 
 #[cfg(feature = "macros")]
 pub use sea_orm_macros::{

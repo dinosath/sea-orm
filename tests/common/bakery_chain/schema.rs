@@ -1,8 +1,6 @@
 use super::*;
 use crate::common::setup::{create_table, create_table_with_index};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbConn, ExecResult, Schema, error::*, sea_query,
-};
+use sea_orm::{DatabaseConnection, DbConn, ExecResult, Schema, error::*, sea_query};
 use sea_query::{ColumnDef, ForeignKey, ForeignKeyAction, Index, Table};
 
 pub async fn create_tables(db: &DatabaseConnection) -> Result<(), DbErr> {

@@ -374,9 +374,8 @@ mod tests {
     #[cfg(feature = "sync")]
     use crate::util::StreamShim;
     use crate::{DatabaseConnection, DbBackend, MockDatabase, Transaction};
-    use crate::{QueryOrder, QuerySelect};
     use crate::{Statement, tests_cfg::*};
-    use futures_util::{TryStreamExt, stream::TryNext};
+    use futures_util::TryStreamExt;
     use pretty_assertions::assert_eq;
     use sea_query::{Expr, SelectStatement, Value};
     use std::sync::LazyLock;

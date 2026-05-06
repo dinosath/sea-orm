@@ -3,12 +3,12 @@ use crate::{
     SelectGetableValue, SelectorRaw, Statement,
     error::{DbErr, type_err},
 };
+use std::{fmt::Debug, marker::PhantomData, sync::Arc};
+
+#[cfg(feature = "with-json")]
 use std::{
     collections::{BTreeMap, HashMap},
-    fmt::Debug,
     hash::Hash,
-    marker::PhantomData,
-    sync::Arc,
 };
 
 #[cfg(any(feature = "mock", feature = "proxy"))]

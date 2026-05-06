@@ -7,7 +7,7 @@ use sea_orm::{
     error::*, sea_query,
 };
 use sea_query::{
-    Alias, ColumnDef, ColumnType, ForeignKeyCreateStatement, IntoIden, IntoTableRef, StringLen,
+    ColumnDef, ColumnType, ForeignKeyCreateStatement, IntoIden, IntoTableRef, StringLen,
     extension::postgres::Type,
 };
 

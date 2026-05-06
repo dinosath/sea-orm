@@ -1,8 +1,10 @@
 use crate::sea_query::{Nullable, ValueType};
 use crate::{ActiveValue, Value};
 
+#[cfg(any(feature = "with-chrono", feature = "with-time"))]
 mod timestamp;
-use timestamp::*;
+#[cfg(any(feature = "with-chrono", feature = "with-time"))]
+use timestamp::impl_timestamp;
 
 #[cfg(feature = "with-chrono")]
 mod with_chrono;

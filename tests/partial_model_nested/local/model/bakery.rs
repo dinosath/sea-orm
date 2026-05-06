@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use sea_orm::entity::prelude::*;
 
 #[sea_orm::model]

@@ -1,6 +1,5 @@
 use super::sea_orm_active_enums::*;
 use sea_orm::entity::prelude::*;
-use sea_orm::{ActiveValue, IntoActiveValue};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[cfg_attr(feature = "sqlx-postgres", sea_orm(schema_name = "public"))]

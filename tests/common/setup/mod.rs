@@ -5,7 +5,7 @@ use sea_orm::{
     Statement,
 };
 use sea_query::{
-    SeaRc, Table, TableCreateStatement,
+    Table, TableCreateStatement,
     extension::postgres::{Type, TypeCreateStatement},
 };
 

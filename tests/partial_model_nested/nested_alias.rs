@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 use crate::common::TestContext;
 use crate::local::{bakery, create_tables, worker};
 use sea_orm::{

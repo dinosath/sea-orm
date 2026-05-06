@@ -1,6 +1,8 @@
+#![allow(unused_imports, dead_code)]
+
 pub mod common;
 use common::{TestContext, features::*, setup::*};
-use sea_orm::{DatabaseConnection, IntoActiveModel, NotSet, Set, entity::prelude::*};
+use sea_orm::{Set, entity::prelude::*};
 use uuid::Uuid;
 
 mod sample {

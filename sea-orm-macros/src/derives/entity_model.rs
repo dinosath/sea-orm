@@ -172,6 +172,7 @@ pub fn expand_derive_entity_model(
     let mut primary_keys: Punctuated<_, Comma> = Punctuated::new();
     let mut primary_key_types: Punctuated<_, Comma> = Punctuated::new();
     let mut auto_increment: Option<bool> = None;
+    let mut tenant_key: Option<(Ident, Ident, syn::Type)> = None;
     #[cfg(feature = "with-json")]
     let mut columns_json_keys: Punctuated<_, Comma> = Punctuated::new();
 
@@ -212,6 +213,7 @@ pub fn expand_derive_entity_model(
                     let mut enum_name = None;
                     let mut is_primary_key = false;
                     let mut is_auto_increment = false;
+                    let mut is_tenant_key = false;
                     let mut extra = None;
                     let mut seaography_ignore = false;
                     #[cfg(feature = "with-json")]
@@ -308,6 +310,8 @@ pub fn expand_derive_entity_model(
                                 } else if meta.path.is_ident("primary_key") {
                                     is_primary_key = true;
                                     primary_key_types.push(field.ty.clone());
+                                } else if meta.path.is_ident("tenant_key") {
+                                    is_tenant_key = true;
                                 } else if meta.path.is_ident("nullable") {
                                     nullable = true;
                                 } else if meta.path.is_ident("indexed") {
@@ -411,6 +415,12 @@ pub fn expand_derive_entity_model(
                         .collect(); // Remove all whitespace
 
                     if ignore {
+                        if is_tenant_key {
+                            return Err(syn::Error::new_spanned(
+                                field,
+                                "tenant_key cannot be used on ignored fields",
+                            ));
+                        }
                         continue;
                     } else {
                         columns_enum.push(quote! {
@@ -428,6 +438,17 @@ pub fn expand_derive_entity_model(
                             #variant_attrs
                             #field_name
                         });
+                    }
+
+                    if is_tenant_key {
+                        if tenant_key.is_some() {
+                            return Err(syn::Error::new_spanned(
+                                field,
+                                "exactly one #[sea_orm(tenant_key)] field is allowed",
+                            ));
+                        }
+
+                        tenant_key = Some((ident.clone(), field_name.clone(), field.ty.clone()));
                     }
 
                     if !is_primary_key && is_auto_increment {
@@ -576,19 +597,49 @@ pub fn expand_derive_entity_model(
         }
     };
 
-    let with_json_impls = {
-        #[cfg(feature = "with-json")]
-        quote! {
-            fn json_key(&self) -> &'static str {
-                match self {
-                    #columns_json_keys
-                }
+    #[cfg(feature = "with-json")]
+    let with_json_impls = quote! {
+        fn json_key(&self) -> &'static str {
+            match self {
+                #columns_json_keys
             }
         }
-
-        #[cfg(not(feature = "with-json"))]
-        quote! {}
     };
+
+    #[cfg(not(feature = "with-json"))]
+    let with_json_impls = quote! {};
+
+    let tenant_scoped_impl = tenant_key
+        .as_ref()
+        .map(|(tenant_field, tenant_column, tenant_ty)| {
+            quote! {
+                #[automatically_derived]
+                impl sea_orm::tenant::TenantScoped for Entity {
+                    type TenantId = #tenant_ty;
+
+                    fn tenant_column() -> Self::Column {
+                        Column::#tenant_column
+                    }
+
+                }
+
+                #[automatically_derived]
+                impl sea_orm::tenant::TenantScopedActiveModel<#tenant_ty> for ActiveModel {
+                    fn set_tenant_id(&mut self, tenant_id: #tenant_ty) {
+                        self.#tenant_field = sea_orm::ActiveValue::Set(tenant_id);
+                    }
+                }
+
+                #[automatically_derived]
+                impl Entity {
+                    pub fn tenant_filter(tenant_id: #tenant_ty) -> sea_orm::Condition {
+                        sea_orm::Condition::all()
+                            .add(sea_orm::ColumnTrait::eq(&Column::#tenant_column, tenant_id))
+                    }
+                }
+            }
+        })
+        .unwrap_or_default();
 
     Ok(quote! {
         #impl_model_ex
@@ -635,5 +686,7 @@ pub fn expand_derive_entity_model(
         #entity_def
 
         #primary_key
+
+        #tenant_scoped_impl
     })
 }

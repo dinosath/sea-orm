@@ -30,6 +30,7 @@ pub async fn test_cake_error_sqlx(db: &DbConn) {
     check_error(&error);
 }
 
+#[allow(unused_variables)]
 fn check_error(error: &DbErr) {
     #[cfg(any(feature = "sqlx-mysql", feature = "sqlx-sqlite"))]
     match error {

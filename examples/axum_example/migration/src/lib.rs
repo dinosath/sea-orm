@@ -2,8 +2,6 @@ pub use sea_orm_migration::prelude::*;
 
 mod m20220120_000001_create_post_table;
 mod m20220120_000002_seed_posts;
-mod m20220120_000003_create_tenant_post_table;
-mod m20220120_000004_seed_tenant_posts;
 
 pub struct Migrator;
 
@@ -13,8 +11,6 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20220120_000001_create_post_table::Migration),
             Box::new(m20220120_000002_seed_posts::Migration),
-            Box::new(m20220120_000003_create_tenant_post_table::Migration),
-            Box::new(m20220120_000004_seed_tenant_posts::Migration),
         ]
     }
 }

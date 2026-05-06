@@ -44,7 +44,6 @@ bigdecimal = { version = "0.4", default-features = false, features = [
     "std",
 ], optional = true }
 chrono = { version = "0.4.30", default-features = false, optional = true }
-dashmap = { version = "6", optional = true }
 derive_more = { version = "2", features = ["debug"] }
 futures-util = { version = "0.3", default-features = false, features = [
     "std",
@@ -92,7 +91,6 @@ url = { version = "2.2", default-features = false }
 uuid = { version = "1", default-features = false, optional = true }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
 dotenv = "0.15"
 maplit = { version = "1" }
 pretty_assertions = { version = "0.7" }
@@ -104,12 +102,9 @@ sea-orm = { path = ".", features = [
 ] }
 smol = { version = "1.2" }
 smol-potat = { version = "1.1" }
-testcontainers = { version = "0.24" }
-testcontainers-modules = { version = "0.12", features = ["postgres"] }
 time = { version = "0.3.36", features = ["macros"] }
 tokio = { version = "1.6", features = ["full"] }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-trybuild = "1"
 uuid = { version = "1", features = ["v4"] }
 
 [features]
@@ -192,7 +187,7 @@ tests-features = [
     "with-bigdecimal",
     "with-ipnetwork",
 ]
-tenant = ["dep:dashmap"]
+tenant = []
 tracing-spans = []
 with-axum = ["tenant", "dep:axum"]
 with-arrow = ["sea-orm-arrow", "sea-orm-macros/with-arrow"]
@@ -249,7 +244,3 @@ with-uuid = ["uuid", "sea-query/with-uuid", "sea-query-sqlx?/with-uuid"]
 [patch.crates-io]
 # sea-query = { path = "../sea-query" }
 # sea-query = { git = "https://github.com/SeaQL/sea-query", branch = "master" }
-
-[[bench]]
-name = "tenant"
-harness = false

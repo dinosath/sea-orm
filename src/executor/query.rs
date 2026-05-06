@@ -108,6 +108,7 @@ impl QueryResult {
                         .and_then(|opt| opt.ok_or_else(|| err_null_idx_col(idx))),
                 )
             }
+            #[allow(unreachable_patterns)]
             _ => None,
         }
     }

@@ -26,7 +26,6 @@ features = [
     "debug-print",
     "runtime-tokio-native-tls",
     "sqlx-postgres",
-    "with-axum",
     # "sqlx-mysql",
     # "sqlx-sqlite",
 ]

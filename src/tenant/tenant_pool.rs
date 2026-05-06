@@ -1,7 +1,12 @@
-use std::{fmt, future::Future, pin::Pin, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt,
+    future::Future,
+    pin::Pin,
+    sync::{Arc, Mutex},
+};
 
-use dashmap::DashMap;
-use futures_util::lock::Mutex;
+use futures_util::lock::Mutex as AsyncMutex;
 
 use crate::{ConnectOptions, Database, DatabaseConnection, DbErr};
 
@@ -13,14 +18,15 @@ type TenantPoolFactory = dyn Fn(TenantContext) -> Pin<Box<dyn Future<Output = Re
 
 /// Registry of lazily initialized connection pools for database-per-tenant deployments.
 pub struct TenantPoolManager {
-    pools: DashMap<String, Arc<Mutex<Option<DatabaseConnection>>>>,
+    pools: Mutex<HashMap<String, Arc<AsyncMutex<Option<DatabaseConnection>>>>>,
     factory: Arc<TenantPoolFactory>,
 }
 
 impl fmt::Debug for TenantPoolManager {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let pool_count = self.pools.lock().expect("tenant pool mutex").len();
         f.debug_struct("TenantPoolManager")
-            .field("pool_count", &self.pools.len())
+            .field("pool_count", &pool_count)
             .finish()
     }
 }
@@ -33,7 +39,7 @@ impl TenantPoolManager {
         Fut: Future<Output = Result<DatabaseConnection, DbErr>> + Send + 'static,
     {
         Self {
-            pools: DashMap::new(),
+            pools: Mutex::new(HashMap::new()),
             factory: Arc::new(move |tenant| Box::pin(factory(tenant))),
         }
     }
@@ -51,11 +57,14 @@ impl TenantPoolManager {
 
     /// Acquire or lazily initialize the shared pool for a tenant.
     pub async fn get_pool(&self, tenant: &TenantContext) -> Result<DatabaseConnection, DbErr> {
-        let entry = self
-            .pools
-            .entry(tenant.tenant_id().to_string())
-            .or_insert_with(|| Arc::new(Mutex::new(None)))
-            .clone();
+        let key = tenant.tenant_id().to_string();
+        let entry = {
+            let mut pools = self.pools.lock().expect("tenant pool mutex");
+            pools
+                .entry(key)
+                .or_insert_with(|| Arc::new(AsyncMutex::new(None)))
+                .clone()
+        };
 
         let mut guard = entry.lock().await;
         if let Some(connection) = guard.as_ref() {
@@ -78,6 +87,6 @@ impl TenantPoolManager {
 
     /// Return the number of tenant pools currently cached.
     pub fn pool_count(&self) -> usize {
-        self.pools.len()
+        self.pools.lock().expect("tenant pool mutex").len()
     }
 }

@@ -39,7 +39,6 @@ path = "src/lib.rs"
 [dependencies]
 async-stream = { version = "0.3", default-features = false }
 async-trait = { version = "0.1", default-features = false }
-axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"], optional = true }
 bigdecimal = { version = "0.4", default-features = false, features = [
     "std",
 ], optional = true }
@@ -91,6 +90,7 @@ url = { version = "2.2", default-features = false }
 uuid = { version = "1", default-features = false, optional = true }
 
 [dev-dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
 dotenv = "0.15"
 maplit = { version = "1" }
 pretty_assertions = { version = "0.7" }
@@ -189,7 +189,6 @@ tests-features = [
 ]
 tenant = []
 tracing-spans = []
-with-axum = ["tenant", "dep:axum"]
 with-arrow = ["sea-orm-arrow", "sea-orm-macros/with-arrow"]
 with-bigdecimal = [
     "bigdecimal",
@@ -244,3 +243,7 @@ with-uuid = ["uuid", "sea-query/with-uuid", "sea-query-sqlx?/with-uuid"]
 [patch.crates-io]
 # sea-query = { path = "../sea-query" }
 # sea-query = { git = "https://github.com/SeaQL/sea-query", branch = "master" }
+
+[[example]]
+name = "tenant_axum"
+required-features = ["tenant"]

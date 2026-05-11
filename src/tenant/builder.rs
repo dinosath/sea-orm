@@ -1,36 +1,25 @@
 use std::{fmt, future::Future, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
-#[cfg(feature = "with-axum")]
-use axum::http::{HeaderName, request::Parts};
 
 use crate::{
-    ConnectOptions, ConnectionTrait, DatabaseConnection, DbBackend, DbErr, ExecResult,
-    QueryResult, Statement,
+    ConnectOptions, ConnectionTrait, DatabaseConnection, DbBackend, DbErr, ExecResult, QueryResult,
+    Statement,
 };
 
 use super::{
     DatabaseTenantConnection, GuardedRowLevelTenantConnection, RowLevelTenantConnection,
-    SchemaPerTenant, SchemaTenantConnection, TenantContext, TenantPoolManager,
-    TenantSchemaMapper, TenantSession,
-};
-#[cfg(feature = "with-axum")]
-use super::{
-    HeaderTenantResolver, JwtTenantResolver, SubdomainTenantResolver, TenantRequestResolver,
-    TenantResolutionError,
+    SchemaPerTenant, SchemaTenantConnection, TenantContext, TenantPoolManager, TenantSchemaMapper,
+    TenantSession,
 };
 
-type TenantConnectionFactory = dyn Fn(
-        TenantContext,
-    ) -> Pin<Box<dyn Future<Output = Result<DatabaseConnection, DbErr>> + Send>>
+type TenantConnectionFactory = dyn Fn(TenantContext) -> Pin<Box<dyn Future<Output = Result<DatabaseConnection, DbErr>> + Send>>
     + Send
     + Sync;
 
 /// Runtime multitenancy configuration with strategy-aware connection resolution.
 pub struct MultiTenantConfig {
     strategy: MultiTenantStrategy,
-    #[cfg(feature = "with-axum")]
-    request_resolver: Option<Arc<dyn TenantRequestResolver>>,
 }
 
 impl fmt::Debug for MultiTenantConfig {
@@ -43,8 +32,6 @@ impl fmt::Debug for MultiTenantConfig {
 
         let mut debug = f.debug_struct("MultiTenantConfig");
         debug.field("strategy", &strategy);
-        #[cfg(feature = "with-axum")]
-        debug.field("has_request_resolver", &self.request_resolver.is_some());
         debug.finish()
     }
 }
@@ -82,8 +69,6 @@ enum BuilderStrategy {
 #[derive(Default)]
 pub struct MultiTenantConfigBuilder {
     strategy: Option<BuilderStrategy>,
-    #[cfg(feature = "with-axum")]
-    request_resolver: Option<Arc<dyn TenantRequestResolver>>,
 }
 
 impl fmt::Debug for MultiTenantConfigBuilder {
@@ -100,8 +85,6 @@ impl fmt::Debug for MultiTenantConfigBuilder {
 
         let mut debug = f.debug_struct("MultiTenantConfigBuilder");
         debug.field("strategy", &strategy);
-        #[cfg(feature = "with-axum")]
-        debug.field("has_request_resolver", &self.request_resolver.is_some());
         debug.finish()
     }
 }
@@ -123,26 +106,6 @@ impl MultiTenantConfig {
         MultiTenantConfigBuilder::default()
     }
 
-    /// Borrow the configured Axum tenant resolver when one was provided.
-    #[cfg(feature = "with-axum")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "with-axum")))]
-    pub fn tenant_request_resolver(&self) -> Option<Arc<dyn TenantRequestResolver>> {
-        self.request_resolver.clone()
-    }
-
-    /// Resolve the current tenant from Axum request parts using the configured resolver.
-    #[cfg(feature = "with-axum")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "with-axum")))]
-    pub fn resolve_request_tenant(
-        &self,
-        parts: &Parts,
-    ) -> Result<TenantContext, TenantResolutionError> {
-        self.request_resolver
-            .as_ref()
-            .ok_or(TenantResolutionError::MissingResolver)?
-            .resolve(parts)
-    }
-
     /// Resolve the tenant-aware connection for the configured strategy.
     pub async fn connection_for(
         &self,
@@ -153,13 +116,9 @@ impl MultiTenantConfig {
                 let connection = pool_manager.connection_for(tenant).await?;
                 Ok(ConfiguredTenantConnection::Database(connection))
             }
-            MultiTenantStrategy::Schema { db, strategy } => {
-                Ok(ConfiguredTenantConnection::Schema(SchemaTenantConnection::schema(
-                    db.clone(),
-                    tenant,
-                    strategy.clone(),
-                )))
-            }
+            MultiTenantStrategy::Schema { db, strategy } => Ok(ConfiguredTenantConnection::Schema(
+                SchemaTenantConnection::schema(db.clone(), tenant, strategy.clone()),
+            )),
             MultiTenantStrategy::RowLevel { db } => Ok(ConfiguredTenantConnection::RowLevel(
                 RowLevelTenantConnection::row_level(db.clone(), tenant),
             )),
@@ -209,60 +168,10 @@ impl MultiTenantConfigBuilder {
         self
     }
 
-    /// Configure Axum request resolution from a custom tenant resolver.
-    #[cfg(feature = "with-axum")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "with-axum")))]
-    pub fn request_resolver<R>(mut self, resolver: R) -> Self
-    where
-        R: TenantRequestResolver,
-    {
-        self.request_resolver = Some(Arc::new(resolver));
-        self
-    }
-
-    /// Configure Axum request resolution from a header.
-    #[cfg(feature = "with-axum")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "with-axum")))]
-    pub fn header_resolver(mut self, header_name: HeaderName) -> Self {
-        self.request_resolver = Some(Arc::new(HeaderTenantResolver::new(header_name)));
-        self
-    }
-
-    /// Configure Axum request resolution from the default `x-tenant-id` header.
-    #[cfg(feature = "with-axum")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "with-axum")))]
-    pub fn default_header_resolver(self) -> Self {
-        self.request_resolver(HeaderTenantResolver::default())
-    }
-
-    /// Configure Axum request resolution from a subdomain.
-    #[cfg(feature = "with-axum")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "with-axum")))]
-    pub fn subdomain_resolver<T>(mut self, base_domain: T) -> Self
-    where
-        T: Into<String>,
-    {
-        self.request_resolver = Some(Arc::new(SubdomainTenantResolver::new(base_domain)));
-        self
-    }
-
-    /// Configure Axum request resolution from a JWT bearer token.
-    #[cfg(feature = "with-axum")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "with-axum")))]
-    pub fn jwt_resolver<F>(mut self, decoder: F) -> Self
-    where
-        F: Fn(&str) -> Result<TenantContext, TenantResolutionError> + Send + Sync + 'static,
-    {
-        self.request_resolver = Some(Arc::new(JwtTenantResolver::new(decoder)));
-        self
-    }
-
     /// Finalize the builder into a runtime multitenancy configuration.
     pub fn build(self) -> Result<MultiTenantConfig, DbErr> {
         let strategy = self.strategy.ok_or_else(|| {
-            DbErr::Custom(
-                "multi-tenancy strategy must be configured before building".to_owned(),
-            )
+            DbErr::Custom("multi-tenancy strategy must be configured before building".to_owned())
         })?;
 
         let strategy = match strategy {
@@ -272,22 +181,18 @@ impl MultiTenantConfigBuilder {
                     async move { (factory)(tenant).await }
                 }),
             },
-            BuilderStrategy::DatabaseConnectOptions { resolver } => {
-                MultiTenantStrategy::Database {
-                    pool_manager: TenantPoolManager::from_connect_options(move |tenant| {
-                        resolver(tenant)
-                    }),
-                }
+            BuilderStrategy::DatabaseConnectOptions { resolver } => MultiTenantStrategy::Database {
+                pool_manager: TenantPoolManager::from_connect_options(move |tenant| {
+                    resolver(tenant)
+                }),
+            },
+            BuilderStrategy::Schema { db, strategy } => {
+                MultiTenantStrategy::Schema { db, strategy }
             }
-            BuilderStrategy::Schema { db, strategy } => MultiTenantStrategy::Schema { db, strategy },
             BuilderStrategy::RowLevel { db } => MultiTenantStrategy::RowLevel { db },
         };
 
-        Ok(MultiTenantConfig {
-            strategy,
-            #[cfg(feature = "with-axum")]
-            request_resolver: self.request_resolver,
-        })
+        Ok(MultiTenantConfig { strategy })
     }
 }
 

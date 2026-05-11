@@ -7,11 +7,6 @@ use crate::{
     ActiveValue::Set, ConnectionTrait, DbBackend, DbErr, EntityTrait, MockDatabase, QueryFilter,
     QueryTrait, Statement, Transaction,
 };
-#[cfg(feature = "with-axum")]
-use axum::{
-    extract::FromRequestParts,
-    http::{HeaderName, Request},
-};
 
 use super::{
     ConfiguredTenantConnection, MultiTenantConfig, RowLevelTenantConnection,
@@ -364,48 +359,6 @@ async fn tenant_job_preserves_scope_for_background_work() {
     let mapped = job.map(|payload| payload.len());
     assert_eq!(mapped.tenant().tenant_id(), "acme");
     assert_eq!(mapped.payload(), &7_usize);
-}
-
-#[cfg(feature = "with-axum")]
-#[test]
-fn multitenant_builder_resolves_header_tenant_from_request() {
-    let config = MultiTenantConfig::builder()
-        .row_level(crate::DatabaseConnection::default())
-        .header_resolver(HeaderName::from_static("x-org-id"))
-        .build()
-        .expect("config");
-
-    let request = Request::builder()
-        .uri("/tenant/posts")
-        .header("x-org-id", "acme")
-        .body(())
-        .expect("request");
-    let (parts, _) = request.into_parts();
-
-    let tenant = config
-        .resolve_request_tenant(&parts)
-        .expect("resolved tenant");
-
-    assert_eq!(tenant.tenant_id(), "acme");
-}
-
-#[cfg(feature = "with-axum")]
-#[tokio::test]
-async fn tenant_id_can_be_extracted_from_request_extensions() {
-    let request = Request::builder()
-        .uri("/tenant/posts")
-        .body(())
-        .expect("request");
-    let (mut parts, _) = request.into_parts();
-    parts
-        .extensions
-        .insert(TenantId::new("acme").expect("tenant id"));
-
-    let tenant_id = TenantId::from_request_parts(&mut parts, &())
-        .await
-        .expect("tenant id extractor");
-
-    assert_eq!(tenant_id, "acme");
 }
 
 #[tokio::test]

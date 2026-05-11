@@ -202,7 +202,7 @@ See the [quickstart example](https://github.com/SeaQL/sea-orm/blob/master/sea-or
 
 ## Multi-Tenancy
 
-SeaORM includes explicit, async-safe multitenancy primitives behind the `tenant` feature, with optional Axum integration behind `with-axum`.
+SeaORM includes explicit, async-safe multitenancy primitives behind the `tenant` feature.
 
 Supported strategies:
 
@@ -258,7 +258,7 @@ use sea_orm::{EntityTrait, tenant::TenantQueryExt};
 let query = tenant_post::Entity::find().with_tenant("acme".to_owned());
 ```
 
-For Axum services, `tenant_middleware` and `HeaderTenantResolver` let you inject both `TenantContext` and `TenantId` into request extensions and extract them explicitly in handlers.
+For HTTP frameworks such as Axum, keep request extraction in your application layer and pass `TenantContext` explicitly into SeaORM's tenant APIs.
 
 You can also bootstrap tenancy from a single configuration object instead of manually instantiating each strategy wrapper:
 
@@ -270,7 +270,6 @@ let shared = Database::connect("sqlite::memory:").await?;
 
 let tenancy = MultiTenantConfig::builder()
     .row_level(shared)
-    .default_header_resolver()
     .build()?;
 
 let tenant_db = tenancy
@@ -284,8 +283,6 @@ let _posts = guarded.repository::<tenant_post::Entity>().all().await?;
 # Ok(())
 # }
 ```
-
-When `with-axum` is enabled, the same `MultiTenantConfig` can also resolve the request tenant for `tenant_middleware_from_config`, so HTTP extraction and database routing stay in one explicit configuration path.
 
 You can also run service and background-job logic inside an explicit tenant boundary:
 

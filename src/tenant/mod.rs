@@ -5,7 +5,6 @@
 //! Unlike Hibernate, SeaORM keeps the tenant context explicit and never relies on thread-locals.
 
 mod builder;
-mod middleware;
 mod runtime;
 mod tenant_connection;
 mod tenant_context;
@@ -14,9 +13,6 @@ mod tenant_pool;
 mod tests;
 
 pub use builder::*;
-#[cfg(feature = "with-axum")]
-#[cfg_attr(docsrs, doc(cfg(feature = "with-axum")))]
-pub use middleware::*;
 pub use runtime::*;
 pub use tenant_connection::*;
 pub use tenant_context::*;

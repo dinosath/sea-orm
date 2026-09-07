@@ -293,3 +293,90 @@ fn erp_dependency_graph_compiles() {
         true
     );
 }
+
+fn render_with(node: &Node, root: &'static str, backend: DbBackend) -> String {
+    let expr = compile_to_expr(node, root.into()).unwrap();
+    use crate::sea_query::{MysqlQueryBuilder, SqliteQueryBuilder};
+    match backend {
+        DbBackend::Postgres => crate::sea_query::Query::select()
+            .expr(expr)
+            .to_string(PostgresQueryBuilder),
+        DbBackend::MySql => crate::sea_query::Query::select()
+            .expr(expr)
+            .to_string(MysqlQueryBuilder),
+        DbBackend::Sqlite => crate::sea_query::Query::select()
+            .expr(expr)
+            .to_string(SqliteQueryBuilder),
+    }
+}
+
+#[test]
+fn correlated_aggregate_renders_on_all_backends() {
+    let open = Node::column(sale::Column::Status).eq(Node::str("OPEN"));
+    let outstanding = Node::aggregate_filtered(
+        customer::Relation::Sale,
+        AggregateFunction::Sum,
+        Node::column(sale::Column::Balance),
+        Some(open),
+    );
+    for backend in [DbBackend::Postgres, DbBackend::MySql, DbBackend::Sqlite] {
+        let sql = render_with(&outstanding, "customer", backend);
+        assert!(
+            sql.contains(r#""sale"."customer_id" = "customer"."id""#)
+                || sql.contains(r#"`sale`.`customer_id` = `customer`.`id`"#),
+            "no correlation for {backend:?}: {sql}"
+        );
+        assert!(
+            sql.contains(r#"status"#),
+            "no filter for {backend:?}: {sql}"
+        );
+        assert!(sql.contains("'OPEN'"), "bad literal for {backend:?}: {sql}");
+    }
+}
+
+#[test]
+fn scalar_formula_on_own_entity_select() {
+    let net = Node::column(sale_line::Column::Quantity)
+        .mul(Node::column(sale_line::Column::UnitPrice))
+        .sub(Node::coalesce([Node::column(sale_line::Column::Discount), Node::int(0)]).unwrap());
+    let sql = sale_line::Entity::find()
+        .formula(&net, "net_price")
+        .unwrap()
+        .build(DbBackend::Postgres)
+        .to_string();
+    assert!(sql.contains(r#"FROM "sale_line""#), "got: {sql}");
+    assert!(sql.contains(r#"AS "net_price""#), "got: {sql}");
+    assert!(
+        sql.contains(r#""sale_line"."quantity" * "sale_line"."unit_price""#),
+        "got: {sql}"
+    );
+}
+
+#[test]
+fn comparison_type_mismatch_is_rejected() {
+    let bad = Node::column(sale_line::Column::Quantity).gt(Node::str("x"));
+    let err = compile_to_expr(&bad, "sale_line".into()).unwrap_err();
+    assert!(
+        err.message.contains("cannot apply formula operator `>`"),
+        "{err}"
+    );
+}
+
+#[test]
+fn boolean_and_with_non_boolean_is_rejected() {
+    // quantity AND quantity  -- quantities are integers, not booleans
+    let bad =
+        Node::column(sale_line::Column::Quantity).and(Node::column(sale_line::Column::Quantity));
+    let err = compile_to_expr(&bad, "sale_line".into()).unwrap_err();
+    assert!(err.message.contains("AND/OR"), "{err}");
+}
+
+#[test]
+fn case_with_non_boolean_condition_is_rejected() {
+    let bad = Node::case(
+        [(Node::column(sale_line::Column::Quantity), Node::int(1))],
+        Node::int(0),
+    );
+    let err = compile_to_expr(&bad, "sale_line".into()).unwrap_err();
+    assert!(err.message.contains("CASE WHEN"), "{err}");
+}

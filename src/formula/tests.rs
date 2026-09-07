@@ -420,3 +420,31 @@ fn type_of_reports_result_type() {
         crate::formula::type_of(&Node::column(sale::Column::Status), "sale_line".into()).is_err()
     );
 }
+
+#[test]
+fn overdue_formula_with_today() {
+    // overdue = SUM(sales.balance WHERE balance > 0 AND due_date < today())
+    let cond = Node::column(sale::Column::Balance)
+        .gt(Node::int(0))
+        .and(Node::column(sale::Column::DueDate).lt(Node::today()));
+    let overdue = Node::aggregate_filtered(
+        customer::Relation::Sale,
+        AggregateFunction::Sum,
+        Node::column(sale::Column::Balance),
+        Some(cond),
+    );
+    let sql = render(&overdue, "customer");
+    assert!(sql.contains("CURRENT_DATE"), "got: {sql}");
+    assert!(sql.contains("AND"), "got: {sql}");
+    assert!(
+        sql.contains(r#""sale"."customer_id" = "customer"."id""#),
+        "correlation missing: {sql}"
+    );
+    // today() is typed Date; comparing to the date column is allowed
+    let t = crate::formula::type_of(
+        &Node::column(sale::Column::DueDate).lt(Node::today()),
+        "sale".into(),
+    )
+    .unwrap();
+    assert_eq!(t, crate::formula::FormulaType::Boolean);
+}

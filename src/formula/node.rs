@@ -177,6 +177,8 @@ pub enum Function {
     Floor,
     Ceil,
     Concat,
+    /// SQL `CURRENT_DATE` / `TODAY()`.
+    CurrentDate,
 }
 
 /// A type-safe formula expression.
@@ -335,6 +337,15 @@ impl Node {
         Node::new(NodeKind::Function {
             fun: Function::NullIf,
             args: vec![a, b],
+        })
+    }
+
+    /// The current date (`CURRENT_DATE` / `TODAY()`), used e.g. for `overdue`
+    /// conditions such as `due_date < today()`.
+    pub fn today() -> Self {
+        Node::new(NodeKind::Function {
+            fun: Function::CurrentDate,
+            args: Vec::new(),
         })
     }
 

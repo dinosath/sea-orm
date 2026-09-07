@@ -417,6 +417,11 @@ fn lower_function(
                 nullable,
             })
         }
+        Function::CurrentDate => Ok(Lowered {
+            expr: Expr::current_date(),
+            ty: FormulaType::Date,
+            nullable: false,
+        }),
     }
 }
 

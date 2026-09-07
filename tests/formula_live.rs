@@ -142,4 +142,38 @@ async fn erp_customer_specific_pricing_and_revenue() {
         let exp = Decimal::from_str(expect).unwrap();
         assert_eq!(revs.get(&id).copied(), Some(exp), "customer {id} revenue");
     }
+
+    // --- filtered aggregate: outstanding = SUM(balance WHERE status = 'OPEN') ---
+    // customer 4 has an OPEN sale (balance 77) and a PAID sale (balance 999).
+    for sql in [
+        "INSERT INTO customer VALUES (4,'Customer D')",
+        "INSERT INTO sale VALUES (4,4,4,'OPEN',77.00,'2024-01-01'),(5,4,4,'PAID',999.00,'2024-01-01')",
+    ] {
+        db.execute_unprepared(sql)
+            .await
+            .expect(&format!("sql: {sql}"));
+    }
+    let open = Node::column(sale::Column::Status).eq(Node::str("OPEN"));
+    let outstanding = compile_to_expr(
+        &Node::aggregate_filtered(
+            customer::Relation::Sale,
+            AggregateFunction::Sum,
+            Node::column(sale::Column::Balance),
+            Some(open),
+        ),
+        "customer".into(),
+    )
+    .unwrap();
+    let outs = run_money_query(&db, outstanding, "outstanding").await;
+    // only the OPEN sale contributes; customers 1-3 have no balance.
+    assert_eq!(
+        outs.get(&4).copied(),
+        Some(Decimal::from_str("77").unwrap()),
+        "customer 4 outstanding"
+    );
+    assert_eq!(
+        outs.get(&1).copied(),
+        Some(Decimal::from(0)),
+        "customer 1 outstanding"
+    );
 }

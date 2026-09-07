@@ -541,3 +541,72 @@ fn scalar_formula_order_by() {
         "got: {sql}"
     );
 }
+
+#[test]
+fn operator_function_and_cast_coverage() {
+    use crate::formula::FormulaType;
+    // sale-scope expressions over sale columns
+    let balance = Node::column(sale::Column::Balance); // Decimal
+    let sale_exprs = [
+        Node::nullif(balance.clone(), Node::int(0)),
+        balance.clone().abs(),
+        Node::column(sale::Column::Status).lower(),
+        Node::column(sale::Column::Status).upper(),
+        Node::column(sale::Column::Status).length(),
+        Node::cast(balance.clone(), FormulaType::Integer),
+        balance.clone().neg(),
+        balance.clone().is_null(),
+        balance.clone().is_not_null(),
+        Node::boolean(true).not(),
+        Node::coalesce([balance.clone(), Node::int(0)]).unwrap(),
+        Node::today(),
+    ];
+    for n in sale_exprs {
+        compile_to_expr(&n, "sale".into()).unwrap();
+    }
+    // sale_line discount is nullable; IS NULL allowed on it
+    let disc = Node::column(sale_line::Column::Discount);
+    compile_to_expr(&disc.clone().is_null(), "sale_line".into()).unwrap();
+    compile_to_expr(&disc.is_not_null(), "sale_line".into()).unwrap();
+}
+
+#[test]
+fn aggregate_variety() {
+    let qty = Node::column(sale_line::Column::Quantity); // Integer
+    for (fun, expect_ty) in [
+        (AggregateFunction::Sum, crate::formula::FormulaType::Decimal),
+        (AggregateFunction::Avg, crate::formula::FormulaType::Decimal),
+        (AggregateFunction::Min, crate::formula::FormulaType::Integer),
+        (AggregateFunction::Max, crate::formula::FormulaType::Integer),
+        (
+            AggregateFunction::Count,
+            crate::formula::FormulaType::Integer,
+        ),
+    ] {
+        let n = Node::aggregate(sale::Relation::SaleLine, fun, qty.clone());
+        let sql = render(&n, "sale");
+        assert!(sql.contains(&format!("{}(", fun)), "got: {sql}");
+        assert_eq!(
+            crate::formula::type_of(&n, "sale".into()).unwrap(),
+            expect_ty,
+            "{fun}"
+        );
+    }
+}
+
+#[test]
+fn stacked_formulas_project() {
+    let a = Node::column(customer::Column::Id).add(Node::int(1));
+    let b = Node::column(customer::Column::Id).mul(Node::int(2));
+    let sql = customer::Entity::find()
+        .formula(&a, "a")
+        .unwrap()
+        .formula(&b, "b")
+        .unwrap()
+        .build(DbBackend::Postgres)
+        .to_string();
+    assert!(sql.contains(r#"AS "a""#), "got: {sql}");
+    assert!(sql.contains(r#"AS "b""#), "got: {sql}");
+    // both formulas reference the customer root scope
+    assert!(sql.contains(r#""customer"."id""#), "got: {sql}");
+}

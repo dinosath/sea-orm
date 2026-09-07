@@ -502,6 +502,22 @@ impl Node {
         })
     }
 
+    /// `abs(n)` — absolute value of a numeric expression.
+    pub fn abs(self) -> Self {
+        Node::new(NodeKind::Function {
+            fun: Function::Abs,
+            args: vec![self],
+        })
+    }
+
+    /// `length(str)` — character length.
+    pub fn length(self) -> Self {
+        Node::new(NodeKind::Function {
+            fun: Function::Length,
+            args: vec![self],
+        })
+    }
+
     // ---- Introspection -----------------------------------------------------
 
     /// Lower-level access to the node kind (used by the compiler).

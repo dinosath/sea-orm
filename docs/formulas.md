@@ -53,6 +53,7 @@ The public module is `sea_orm::formula`. Key items:
 | `formula::FormulaExt` | Adds `.formula(..)`, `.filter_formula(..)`, `.order_by_formula(..)` to `Select<E>`. |
 | `formula::compile_to_expr(node, root)` | Public compile entry point used by higher-level systems. |
 | `formula::type_of(node, root)` | Public validation entry point returning the checked result `FormulaType`. |
+| `formula::parse::<E>(str)` | Safe textual parser: resolves a scalar formula string against the columns of entity `E`. |
 | `formula::FormulaError` | Rich error identifying expression, operand, expected/actual types. |
 
 ### Building formulas
@@ -204,9 +205,11 @@ no-N+1 benchmark are natural follow-ups to the same harness.
 
 ## Notes / not yet implemented
 
-* A textual parser (`SUM(sales.total)`) that higher-level systems could feed is
-  not yet shipped; the AST and its builders (`Node`, `formula::type_of`,
-  `formula::compile_to_expr`) are the current public surface.
+* A safe **scalar** textual parser (`formula::parse::<E>(str)`) is shipped: it
+  resolves arithmetic / comparison / boolean / `COALESCE`-style expressions
+  against the columns of a single entity. Relationship aggregates
+  (`SUM(sales.total)`) are still expressed with the typed `Node` builder (so the
+  relationship is validated against real SeaORM metadata) rather than parsed.
 * Backend-specific optimisations (e.g. `LATERAL` joins on Postgres) are not yet
   emitted; correlated sub-queries are used everywhere.
 * The live PostgreSQL integration test covers the pricing / revenue scenarios;

@@ -448,3 +448,38 @@ fn overdue_formula_with_today() {
     .unwrap();
     assert_eq!(t, crate::formula::FormulaType::Boolean);
 }
+
+#[test]
+fn parser_scalar_net_price() {
+    use crate::formula::parse;
+    // net_price = quantity * unit_price - COALESCE(discount, 0)
+    let node = parse::<sale_line::Entity>("quantity * unit_price - COALESCE(discount, 0)").unwrap();
+    let sql = render(&node, "sale_line");
+    assert!(
+        sql.contains(r#""sale_line"."quantity" * "sale_line"."unit_price""#),
+        "got: {sql}"
+    );
+    assert!(
+        sql.contains("COALESCE(\"sale_line\".\"discount\", 0)"),
+        "got: {sql}"
+    );
+}
+
+#[test]
+fn parser_rejects_unknown_column_and_function() {
+    use crate::formula::parse;
+    let err = parse::<sale_line::Entity>("quantity * not_a_column").unwrap_err();
+    assert!(err.message.contains("unknown column"), "{err}");
+    let err = parse::<sale_line::Entity>("quantity * DROP_TABLE()").unwrap_err();
+    assert!(err.message.contains("unknown function"), "{err}");
+}
+
+#[test]
+fn parser_boolean_comparison() {
+    use crate::formula::parse;
+    let node = parse::<sale::Entity>("balance > 0 AND status = 'OPEN'").unwrap();
+    let sql = render(&node, "sale");
+    assert!(sql.contains(r#""sale"."balance" > 0"#), "got: {sql}");
+    assert!(sql.contains(r#""sale"."status" = 'OPEN'"#), "got: {sql}");
+    assert!(sql.contains("AND"), "got: {sql}");
+}

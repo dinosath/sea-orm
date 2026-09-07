@@ -37,12 +37,14 @@
 mod compile;
 mod error;
 mod node;
+mod parse;
 mod select;
 mod ty;
 
 pub use error::{FormulaError, Result};
 pub use node::{AggregateFunction, BinaryOperator, Function, Hop, Node};
 pub(crate) use node::{NodeKind, UnaryOperator};
+pub use parse::parse;
 pub use select::FormulaExt;
 pub use ty::FormulaType;
 
@@ -53,7 +55,7 @@ mod tests;
 pub mod prelude {
     pub use super::{
         AggregateFunction, BinaryOperator, FormulaError, FormulaExt, FormulaType, Function, Hop,
-        Node, type_of,
+        Node, parse, type_of,
     };
 }
 

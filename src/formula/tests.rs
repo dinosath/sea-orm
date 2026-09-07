@@ -501,3 +501,43 @@ fn prelude_exports_parse_and_type_of() {
     // type_of validates it is Boolean without lowering to SQL
     assert_eq!(type_of(&n, "sale".into()).unwrap(), FormulaType::Boolean);
 }
+
+#[test]
+fn nested_aggregate_renders_on_all_backends() {
+    // customer revenue = SUM over sales of SUM over lines(final_price)
+    let net = Node::column(sale_line::Column::Quantity)
+        .mul(Node::column(sale_line::Column::UnitPrice))
+        .sub(Node::coalesce([Node::column(sale_line::Column::Discount), Node::int(0)]).unwrap());
+    let sale_total = Node::aggregate(sale::Relation::SaleLine, AggregateFunction::Sum, net);
+    let customer_revenue =
+        Node::aggregate(customer::Relation::Sale, AggregateFunction::Sum, sale_total);
+    for backend in [DbBackend::Postgres, DbBackend::MySql, DbBackend::Sqlite] {
+        let sql = render_with(&customer_revenue, "customer", backend);
+        assert!(
+            sql.contains(r#""sale_line"."sale_id" = "sale"."id""#)
+                || sql.contains(r#"`sale_line`.`sale_id` = `sale`.`id`"#),
+            "lines->sale correlation missing on {backend:?}: {sql}"
+        );
+        assert!(
+            sql.contains(r#""sale"."customer_id" = "customer"."id""#)
+                || sql.contains(r#"`sale`.`customer_id` = `customer`.`id`"#),
+            "sale->customer correlation missing on {backend:?}: {sql}"
+        );
+    }
+}
+
+#[test]
+fn scalar_formula_order_by() {
+    // scalar net_price used to order SaleLine rows
+    let net =
+        Node::column(sale_line::Column::Quantity).mul(Node::column(sale_line::Column::UnitPrice));
+    let sql = sale_line::Entity::find()
+        .order_by_formula(&net, crate::Order::Desc)
+        .unwrap()
+        .build(DbBackend::Postgres)
+        .to_string();
+    assert!(
+        sql.contains(r#"ORDER BY "sale_line"."quantity" * "sale_line"."unit_price" DESC"#),
+        "got: {sql}"
+    );
+}

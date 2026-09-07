@@ -483,3 +483,21 @@ fn parser_boolean_comparison() {
     assert!(sql.contains(r#""sale"."status" = 'OPEN'"#), "got: {sql}");
     assert!(sql.contains("AND"), "got: {sql}");
 }
+
+#[test]
+fn today_renders_on_all_backends() {
+    let t = Node::today();
+    for backend in [DbBackend::Postgres, DbBackend::MySql, DbBackend::Sqlite] {
+        let sql = render_with(&t, "sale", backend);
+        assert!(sql.contains("CURRENT_DATE"), "{backend:?}: {sql}");
+    }
+}
+
+#[test]
+fn prelude_exports_parse_and_type_of() {
+    use crate::formula::prelude::*;
+    // parse resolves a scalar against the entity's columns
+    let n = parse::<sale::Entity>("balance > 0 AND status = 'OPEN'").unwrap();
+    // type_of validates it is Boolean without lowering to SQL
+    assert_eq!(type_of(&n, "sale".into()).unwrap(), FormulaType::Boolean);
+}

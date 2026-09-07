@@ -181,16 +181,36 @@ implemented yet, but the public AST leaves room to add `GeneratedColumn` /
 The engine ships with unit tests covering scalar arithmetic, `COALESCE` /
 `NULLIF`, `CASE`, to-one traversal, correlated & filtered aggregates, nested
 (dependent) aggregates, and `Select` formula/filter/order integration, asserting
-the emitted correlated SQL. Real-database integration tests that verify exact
-`Decimal` arithmetic, and 10/100/1000/10000-customer performance benchmarks,
-belong behind a live database and are documented as a follow-up (see
-`src/formula/mod.rs`).
+the emitted correlated SQL across Postgres/MySQL/SQLite builders.
+
+A live PostgreSQL integration test (`tests/formula_live.rs`, feature
+`sqlx-postgres`) verifies the engine end-to-end against a real database. It
+recreates the mandatory customer-specific pricing scenario (one product with
+`cost = 5.00` sold to three customers at `10.00` / `8.00` / `6.50`, quantity
+`10`) and asserts per-customer **margin** `50.00 / 30.00 / 15.00`, as well as
+per-customer **revenue** `100 / 80 / 65` — confirming that the generated
+correlated sub-queries stay per-customer and never aggregate across customers.
+Run it with:
+
+```sh
+DATABASE_URL="postgres://sea:sea@localhost:5432/sea" \
+  cargo test --features sqlx-postgres,runtime-tokio-rustls,tests-cfg \
+  --test formula_live
+```
+
+Further live scenarios (multiple products, filtered aggregates such as
+`outstanding` / `overdue`, and COUNT) and the 10/100/1000/10000-customer
+no-N+1 benchmark are natural follow-ups to the same harness.
 
 ## Notes / not yet implemented
 
 * A textual parser (`SUM(sales.total)`) that higher-level systems could feed is
-  not yet shipped; the AST and its builders are the current public surface.
+  not yet shipped; the AST and its builders (`Node`, `formula::type_of`,
+  `formula::compile_to_expr`) are the current public surface.
 * Backend-specific optimisations (e.g. `LATERAL` joins on Postgres) are not yet
   emitted; correlated sub-queries are used everywhere.
-* Live-database numeric integration tests and benchmarks require a running
-  PostgreSQL and are left as a follow-up.
+* The live PostgreSQL integration test covers the pricing / revenue scenarios;
+  additional live scenarios (multi-product, filtered aggregates, COUNT) and the
+  10/100/1000/10000-customer no-N+1 benchmark are follow-ups.
+* Materialised / generated-column storage of formulas is not yet implemented
+  (see above).

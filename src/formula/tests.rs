@@ -380,3 +380,43 @@ fn case_with_non_boolean_condition_is_rejected() {
     let err = compile_to_expr(&bad, "sale_line".into()).unwrap_err();
     assert!(err.message.contains("CASE WHEN"), "{err}");
 }
+
+#[test]
+fn type_of_reports_result_type() {
+    use crate::formula::FormulaType;
+    // net_price is Decimal money
+    let net = sale_line_net_price();
+    assert_eq!(
+        crate::formula::type_of(&net, "sale_line".into()).unwrap(),
+        FormulaType::Decimal
+    );
+    // SUM(balance) is Decimal; COUNT is Integer
+    let sum = Node::aggregate(
+        customer::Relation::Sale,
+        AggregateFunction::Sum,
+        Node::column(sale::Column::Balance),
+    );
+    assert_eq!(
+        crate::formula::type_of(&sum, "customer".into()).unwrap(),
+        FormulaType::Decimal
+    );
+    let count = Node::aggregate(
+        customer::Relation::Sale,
+        AggregateFunction::Count,
+        Node::column(sale::Column::Id),
+    );
+    assert_eq!(
+        crate::formula::type_of(&count, "customer".into()).unwrap(),
+        FormulaType::Integer
+    );
+    // comparison yields Boolean
+    let cmp = Node::column(sale::Column::Status).eq(Node::str("OPEN"));
+    assert_eq!(
+        crate::formula::type_of(&cmp, "sale".into()).unwrap(),
+        FormulaType::Boolean
+    );
+    // invalid formulas still fail validation
+    assert!(
+        crate::formula::type_of(&Node::column(sale::Column::Status), "sale_line".into()).is_err()
+    );
+}

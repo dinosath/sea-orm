@@ -52,6 +52,7 @@ The public module is `sea_orm::formula`. Key items:
 | `formula::AggregateFunction` | `Sum`, `Avg`, `Min`, `Max`, `Count`. |
 | `formula::FormulaExt` | Adds `.formula(..)`, `.filter_formula(..)`, `.order_by_formula(..)` to `Select<E>`. |
 | `formula::compile_to_expr(node, root)` | Public compile entry point used by higher-level systems. |
+| `formula::type_of(node, root)` | Public validation entry point returning the checked result `FormulaType`. |
 | `formula::FormulaError` | Rich error identifying expression, operand, expected/actual types. |
 
 ### Building formulas

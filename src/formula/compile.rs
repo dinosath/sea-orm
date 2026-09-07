@@ -32,6 +32,13 @@ pub fn compile(node: &Node, root: &crate::sea_query::DynIden) -> Result<Expr> {
     emit(node, root).map(|l| l.expr)
 }
 
+/// Validate a formula rooted at `root` and return the (checked) [`FormulaType`]
+/// it produces, without lowering to SQL. Used by dynamic consumers to confirm a
+/// formula is well-typed before executing it.
+pub fn type_of(node: &Node, root: &crate::sea_query::DynIden) -> Result<FormulaType> {
+    emit(node, root).map(|l| l.ty)
+}
+
 /// Lower `node`, validating it in the scope of the table `ctx`. Returns the
 /// produced `sea_query` expression together with its (checked) type.
 fn emit(node: &Node, ctx: &crate::sea_query::DynIden) -> Result<Lowered> {

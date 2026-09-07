@@ -53,7 +53,7 @@ mod tests;
 pub mod prelude {
     pub use super::{
         AggregateFunction, BinaryOperator, FormulaError, FormulaExt, FormulaType, Function, Hop,
-        Node,
+        Node, type_of,
     };
 }
 
@@ -67,4 +67,11 @@ pub fn compile_to_expr(
     root: crate::sea_query::DynIden,
 ) -> Result<crate::sea_query::Expr> {
     compile::compile(node, &root)
+}
+
+/// Validate a formula [`Node`] against the scope `root` and return the type it
+/// produces. Useful for dynamic consumers (e.g. Ferris CMS) that need to confirm
+/// a formula is well-typed before persisting or executing it.
+pub fn type_of(node: &Node, root: crate::sea_query::DynIden) -> Result<FormulaType> {
+    compile::type_of(node, &root)
 }

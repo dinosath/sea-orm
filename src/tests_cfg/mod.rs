@@ -24,7 +24,12 @@ pub mod serde_rename;
 pub mod vendor;
 
 pub mod comment;
+pub mod customer;
+pub mod order;
 pub mod post;
+pub mod product;
+pub mod sale;
+pub mod sale_line;
 pub mod post_tag;
 pub mod profile;
 pub mod tag;

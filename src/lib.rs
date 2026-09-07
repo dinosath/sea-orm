@@ -691,6 +691,7 @@ mod docs;
 mod driver;
 pub mod dynamic;
 pub mod entity;
+pub mod formula;
 /// Error types returned by SeaORM operations.
 pub mod error;
 mod executor;

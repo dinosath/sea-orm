@@ -200,3 +200,96 @@ fn select_integration_filter_and_order() {
         .to_string();
     assert!(ordered.contains(r#"ORDER BY"#), "got: {ordered}");
 }
+
+/// Formula builders for the ERP dependency-graph suite.
+fn sale_line_net_price() -> Node {
+    Node::column(sale_line::Column::Quantity)
+        .mul(Node::column(sale_line::Column::UnitPrice))
+        .sub(Node::coalesce([Node::column(sale_line::Column::Discount), Node::int(0)]).unwrap())
+}
+
+fn sale_line_final_price() -> Node {
+    let net = sale_line_net_price();
+    let vat = net
+        .clone()
+        .mul(Node::column(sale_line::Column::VatRate))
+        .div(Node::int(100));
+    net.add(vat)
+}
+
+fn sale_line_cost() -> Node {
+    Node::column(sale_line::Column::Quantity).mul(Node::related(
+        sale_line::Relation::Product,
+        Node::column(product::Column::Cost),
+    ))
+}
+
+fn sale_total() -> Node {
+    Node::aggregate(
+        sale::Relation::SaleLine,
+        AggregateFunction::Sum,
+        sale_line_final_price(),
+    )
+}
+
+fn sale_margin() -> Node {
+    Node::aggregate(
+        sale::Relation::SaleLine,
+        AggregateFunction::Sum,
+        sale_line_final_price(),
+    )
+    .sub(Node::aggregate(
+        sale::Relation::SaleLine,
+        AggregateFunction::Sum,
+        sale_line_cost(),
+    ))
+}
+
+#[test]
+fn erp_dependency_graph_compiles() {
+    // SaleLine level
+    let net = sale_line_net_price();
+    let final_price = sale_line_final_price();
+    let cost = sale_line_cost();
+    let margin = net.clone().sub(cost.clone());
+    for f in [&net, &final_price, &cost, &margin] {
+        compile_to_expr(f, "sale_line".into()).unwrap();
+    }
+
+    // Sale level
+    let subtotal = Node::aggregate(
+        sale::Relation::SaleLine,
+        AggregateFunction::Sum,
+        net.clone(),
+    );
+    let vat = Node::aggregate(
+        sale::Relation::SaleLine,
+        AggregateFunction::Sum,
+        final_price.clone().sub(net.clone()),
+    );
+    let total = sale_total();
+    let total_cost = Node::aggregate(
+        sale::Relation::SaleLine,
+        AggregateFunction::Sum,
+        cost.clone(),
+    );
+    let sale_margin = sale_margin();
+    for f in [&subtotal, &vat, &total, &total_cost, &sale_margin] {
+        compile_to_expr(f, "sale".into()).unwrap();
+    }
+
+    // Customer level — dependent aggregates must correlate at both levels.
+    let total_revenue = Node::aggregate(customer::Relation::Sale, AggregateFunction::Sum, total);
+    let total_margin = Node::aggregate(
+        customer::Relation::Sale,
+        AggregateFunction::Sum,
+        sale_margin,
+    );
+    for f in [&total_revenue, &total_margin] {
+        compile_to_expr(f, "customer".into()).unwrap();
+    }
+    assert_eq!(
+        compile_to_expr(&total_revenue, "customer".into()).is_ok(),
+        true
+    );
+}

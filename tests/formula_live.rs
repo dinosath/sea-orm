@@ -143,6 +143,32 @@ async fn erp_customer_specific_pricing_and_revenue() {
         assert_eq!(revs.get(&id).copied(), Some(exp), "customer {id} revenue");
     }
 
+    // --- multi-product: customer 5 buys product A (qty 10 @ 10, cost 5) and product B
+    // (qty 10 @ 30, cost 20) in one sale. Cost must be accounted per product. ---
+    for sql in [
+        "INSERT INTO product VALUES (2, 'B', 20.00)",
+        "INSERT INTO customer VALUES (5,'Customer E')",
+        "INSERT INTO sale VALUES (6,5,5,'OPEN',0.00,'2024-01-01')",
+        "INSERT INTO sale_line VALUES (10,6,1,10,10.00,NULL,0),(11,6,2,10,30.00,NULL,0)",
+    ] {
+        db.execute_unprepared(sql)
+            .await
+            .expect(&format!("sql: {sql}"));
+    }
+    let margin2 = compile_to_expr(&customer_margin(), "customer".into()).unwrap();
+    let margins2 = run_money_query(&db, margin2, "margin").await;
+    // product A contributes 50; product B contributes (10*30 - 10*20) = 100 -> 150
+    assert_eq!(
+        margins2.get(&5).copied(),
+        Some(Decimal::from_str("150").unwrap()),
+        "customer 5 multi-product margin"
+    );
+    assert_eq!(
+        margins2.get(&1).copied(),
+        Some(Decimal::from_str("50").unwrap()),
+        "customer 1 margin unchanged"
+    );
+
     // --- filtered aggregate: outstanding = SUM(balance WHERE status = 'OPEN') ---
     // customer 4 has an OPEN sale (balance 77) and a PAID sale (balance 999).
     for sql in [

@@ -4,7 +4,7 @@
 use crate::entity::prelude::*;
 use crate::formula::{AggregateFunction, FormulaExt, Node, compile_to_expr};
 use crate::sea_query::PostgresQueryBuilder;
-use crate::tests_cfg::{customer, dense_row, double_row, product, sale, sale_line};
+use crate::tests_cfg::{account, customer, dense_row, double_row, product, sale, sale_line};
 use crate::{DbBackend, QueryTrait};
 
 /// Render a single formula node to Postgres SQL.
@@ -818,4 +818,26 @@ mod auto_include_acceptance {
             "dense find_by_id must hydrate the auto-included computed field"
         );
     }
+}
+
+/// Correlated-aggregate computed field auto-included in `find()` on a dense
+/// relation-bearing entity (`account.total_amount = SUM(account_tx.amount)`),
+/// mirroring the ERP `Customer.total_revenue = SUM(sales.total)` shape.
+#[test]
+fn auto_include_correlated_aggregate_in_dense_find() {
+    let sql = account::Entity::find()
+        .build(crate::DbBackend::Postgres)
+        .to_string();
+    assert!(
+        sql.contains(r#"AS "total_amount""#),
+        "correlated aggregate computed field not auto-included: {sql}"
+    );
+    assert!(
+        sql.contains(r#""account_tx"."account_id" = "account"."id""#),
+        "aggregate must be correlated per account: {sql}"
+    );
+    assert!(
+        sql.contains(r#"FROM "account""#),
+        "query still rooted on account: {sql}"
+    );
 }

@@ -23,6 +23,8 @@ pub mod sea_orm_active_enums;
 pub mod serde_rename;
 pub mod vendor;
 
+pub mod account;
+pub mod account_tx;
 pub mod comment;
 pub mod customer;
 pub mod dense_row;

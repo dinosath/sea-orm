@@ -15,6 +15,11 @@
 //!   aggregates (`SUM(sales.balance WHERE sales.status = 'OPEN')`)
 //! * nested / dependent formulas
 //! * strongly typed results and a public, dynamic-friendly AST
+//! * **auto-included computed fields**: an entity can declare [`ComputedField`]s
+//!   that [`EntityTrait::find`] / [`EntityTrait::find_by_id`] project on every
+//!   `SELECT` (Hibernate `@Formula` style), while `find()`/`find_by_id()` still
+//!   return `Vec<Model>` / `Option<Model>`; the values are read back through the
+//!   existing partial-model / `FromQueryResult` hydration paths.
 //!
 //! # Example
 //!
@@ -31,8 +36,8 @@
 //!     ])?);
 //! ```
 //!
-//! See the integration examples and documentation crate docs for the complete
-//! ERP walkthrough.
+//! See the `docs/formulas.md` design document for the complete ERP walkthrough,
+//! including how to declare auto-included computed fields on an entity.
 
 mod compile;
 mod error;

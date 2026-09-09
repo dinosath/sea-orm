@@ -687,13 +687,20 @@ fn auto_include_computed_field_in_dense_find_by_id() {
 mod auto_include_acceptance {
     use crate as sea_orm;
     use crate::entity::prelude::*;
-    use crate::tests_cfg::double_row;
+    use crate::tests_cfg::{dense_row, double_row};
 
     #[derive(Debug, PartialEq, crate::FromQueryResult)]
     struct DoubleRowView {
         id: i32,
         value: i32,
         value_doubled: i32,
+    }
+
+    #[derive(Debug, PartialEq, crate::FromQueryResult)]
+    struct DenseRowView {
+        id: i32,
+        value: i32,
+        value_tripled: i32,
     }
 
     #[tokio::test]
@@ -751,6 +758,64 @@ mod auto_include_acceptance {
                 value_doubled: 12,
             }),
             "find_by_id must hydrate the auto-included computed field"
+        );
+    }
+
+    #[tokio::test]
+    async fn dense_find_hydrates_auto_included_computed_field() {
+        use crate::{DbBackend, MockDatabase, Value};
+
+        let db = MockDatabase::new(DbBackend::Postgres)
+            .append_query_results([[maplit::btreemap! {
+                "id" => Into::<Value>::into(2i32),
+                "value" => Into::<Value>::into(4i32),
+                "value_tripled" => Into::<Value>::into(12i32),
+            }]])
+            .into_connection();
+
+        let rows: Vec<DenseRowView> = dense_row::Entity::find()
+            .into_model::<DenseRowView>()
+            .all(&db)
+            .await
+            .expect("load dense_row with computed field");
+
+        assert_eq!(
+            rows,
+            [DenseRowView {
+                id: 2,
+                value: 4,
+                value_tripled: 12,
+            }],
+            "dense find must hydrate the auto-included computed field"
+        );
+    }
+
+    #[tokio::test]
+    async fn dense_find_by_id_hydrates_auto_included_computed_field() {
+        use crate::{DbBackend, MockDatabase, Value};
+
+        let db = MockDatabase::new(DbBackend::Postgres)
+            .append_query_results([[maplit::btreemap! {
+                "id" => Into::<Value>::into(9i32),
+                "value" => Into::<Value>::into(3i32),
+                "value_tripled" => Into::<Value>::into(9i32),
+            }]])
+            .into_connection();
+
+        let row: Option<DenseRowView> = dense_row::Entity::find_by_id(9)
+            .into_model::<DenseRowView>()
+            .one(&db)
+            .await
+            .expect("load dense_row by id with computed field");
+
+        assert_eq!(
+            row,
+            Some(DenseRowView {
+                id: 9,
+                value: 3,
+                value_tripled: 9,
+            }),
+            "dense find_by_id must hydrate the auto-included computed field"
         );
     }
 }

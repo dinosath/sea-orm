@@ -109,6 +109,54 @@ Customer::find()
     .order_by_formula(&outstanding, Order::Desc)?                 // top customers
 ```
 
+### Automatic inclusion in `find()` / `find_by_id()` (Hibernate `@Formula`)
+
+An entity can declare computed fields that are **automatically projected in
+every `SELECT`** produced by `Entity::find()` / `Entity::find_by_id()`, so the
+caller does not have to call `.formula(..)` on each query. The alias is the
+column the computed value appears under in the result row; read it back with a
+partial model / custom `FromQueryResult` (SeaORM's existing hydration paths).
+
+On a classic `#[derive(DeriveEntityModel)]` entity, opt in with the
+`computed_fields` container attribute pointing at a function that returns
+`Vec<sea_orm::formula::ComputedField>`:
+
+```rust,ignore
+use sea_orm::formula::{ComputedField, Node};
+
+fn computed_fields() -> Vec<ComputedField> {
+    let doubled = Node::column(Column::Value).mul(Node::int(2));
+    vec![ComputedField::for_entity::<Entity>("value_doubled", &doubled).unwrap()]
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "double_row", computed_fields = "computed_fields")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub value: i32,
+}
+```
+
+Then `double_row::Entity::find()` emits:
+
+```sql
+SELECT "double_row"."id", "double_row"."value",
+       "double_row"."value" * 2 AS "value_doubled"
+FROM "double_row"
+```
+
+`find_by_id(...)` behaves the same (the formula columns are added on top of the
+primary-key filter). Validation (reachability + type-checking) happens once when
+the field is declared, so `find()` stays infallible. Related rows are still
+hydrated through the existing eager-load APIs (`find_with_related`, partial
+models), so this stays a "SELECT carries the columns" change: `find()` /
+`find_by_id()` continue to return `Vec<Model>` / `Option<Model>`.
+
+> **Note:** this auto-include hook is currently wired for entities derived with
+> `DeriveEntityModel` / `DeriveEntity`. Dense `#[sea_orm::model]` (`ModelEx`)
+> entities are not yet threaded through and are a follow-up.
+
 ## Relationship traversal and correlation
 
 Because every column reference is fully qualified and every hop stores its own

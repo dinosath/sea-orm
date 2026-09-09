@@ -18,6 +18,10 @@ pub mod derive_attr {
         pub comment: Option<syn::LitStr>,
         pub table_iden: Option<()>,
         pub rename_all: Option<syn::LitStr>,
+        /// Path (as a string) to a function returning
+        /// `Vec<sea_orm::formula::ComputedField>` to auto-include on every
+        /// `SELECT` of this entity.
+        pub computed_fields: Option<syn::LitStr>,
     }
 }
 

@@ -1,8 +1,8 @@
 use crate::{
     ActiveModelBehavior, ActiveModelTrait, ColumnTrait, Delete, DeleteMany, DeleteOne,
     FromQueryResult, Identity, Insert, InsertMany, ModelTrait, PrimaryKeyArity, PrimaryKeyToColumn,
-    PrimaryKeyTrait, QueryFilter, Related, RelationBuilder, RelationTrait, RelationType, Select,
-    Update, UpdateMany, UpdateOne, ValidatedDeleteOne,
+    PrimaryKeyTrait, QueryFilter, QuerySelect, Related, RelationBuilder, RelationTrait,
+    RelationType, Select, Update, UpdateMany, UpdateOne, ValidatedDeleteOne,
 };
 use sea_query::{Iden, IntoIden, IntoTableRef, IntoValueTuple, TableRef};
 use std::fmt::Debug;
@@ -136,6 +136,19 @@ pub trait EntityTrait: EntityName {
         RelationBuilder::from_rel(RelationType::HasMany, rel.def().rev(), true)
     }
 
+    /// The computed fields (formulas) to auto-include in every `SELECT` of this
+    /// entity. The default is empty; an entity opts in by overriding this (see
+    /// the `formula::ComputedField` docs and the `#[sea_orm(computed_fields = ...)]`
+    /// model attribute).
+    ///
+    /// When non-empty, [`EntityTrait::find`] / [`EntityTrait::find_by_id`] project
+    /// each returned field as an aliased column in the query's `SELECT`, so the
+    /// computed value can be read back with a partial model / `FromQueryResult`
+    /// without the caller projecting it manually.
+    fn computed_fields(&self) -> Vec<crate::formula::ComputedField> {
+        Vec::new()
+    }
+
     /// Construct select statement to find one / all models
     ///
     /// - To select columns, join tables and group by expressions, see [`QuerySelect`](crate::query::QuerySelect)
@@ -216,7 +229,11 @@ pub trait EntityTrait: EntityName {
     /// # }
     /// ```
     fn find() -> Select<Self> {
-        Select::new()
+        let mut select = Select::new();
+        for cf in Self::default().computed_fields() {
+            select = select.expr_as(cf.expr, cf.alias.as_str());
+        }
+        select
     }
 
     /// Same as `find_related`, but using the other Entity's relation definition.

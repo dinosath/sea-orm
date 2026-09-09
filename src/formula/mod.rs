@@ -45,7 +45,7 @@ pub use error::{FormulaError, Result};
 pub use node::{AggregateFunction, BinaryOperator, Function, Hop, Node};
 pub(crate) use node::{NodeKind, UnaryOperator};
 pub use parse::parse;
-pub use select::FormulaExt;
+pub use select::{ComputedField, FormulaExt};
 pub use ty::FormulaType;
 
 #[cfg(test)]
@@ -54,8 +54,8 @@ mod tests;
 /// Convenient prelude for the formula subsystem.
 pub mod prelude {
     pub use super::{
-        AggregateFunction, BinaryOperator, FormulaError, FormulaExt, FormulaType, Function, Hop,
-        Node, parse, type_of,
+        AggregateFunction, BinaryOperator, ComputedField, FormulaError, FormulaExt, FormulaType,
+        Function, Hop, Node, parse, type_of,
     };
 }
 

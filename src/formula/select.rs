@@ -6,10 +6,52 @@
 
 use crate::{
     EntityTrait, IntoIdentity, Order, QueryFilter, QueryOrder, QuerySelect, Select,
-    sea_query::DynIden,
+    sea_query::{DynIden, Expr},
 };
 
 use super::{Node, Result, compile};
+
+/// A computed field (formula) attached to an entity and auto-included in every
+/// `SELECT` of that entity (i.e. `Entity::find()` / `Entity::find_by_id()`),
+/// mirroring Hibernate's `@Formula`.
+///
+/// The [`Expr`] is compiled (and type-checked) eagerly against the entity's own
+/// table when the field is declared, so projecting it later is infallible. The
+/// alias is the column name the computed value appears under in the result row,
+/// which is what partial models / `FromQueryResult` consumers read it back by.
+#[derive(Debug)]
+pub struct ComputedField {
+    /// Column alias under which the computed value is selected.
+    pub(crate) alias: String,
+    /// Already-validated, already-lowered expression ready to project.
+    pub(crate) expr: Expr,
+}
+
+impl ComputedField {
+    /// Compile `node` as a computed field of entity `E`, returning the value
+    /// under the result-column `alias`.
+    ///
+    /// Validation runs here (reachability of every referenced column from the
+    /// root table of `E`, and type-correctness of every operator), so an
+    /// invalid declaration fails fast instead of at query time.
+    ///
+    /// ```rust,ignore
+    /// ComputedField::for_entity::<Customer>(&outstanding, "outstanding")?
+    /// ```
+    pub fn for_entity<E>(alias: impl Into<String>, node: &Node) -> Result<Self>
+    where
+        E: EntityTrait,
+    {
+        let root = root_table::<E>();
+        // Validate (and type-check) the formula before lowering it.
+        compile::type_of(node, &root)?;
+        let expr = compile::compile(node, &root)?;
+        Ok(Self {
+            alias: alias.into(),
+            expr,
+        })
+    }
+}
 
 /// Extension trait adding formula projection / filter / ordering to a
 /// [`Select`] query.

@@ -16,6 +16,7 @@ struct DeriveEntity {
     relation_ident: syn::Ident,
     schema_name: Option<syn::LitStr>,
     table_name: Option<syn::LitStr>,
+    computed_fields: Option<syn::LitStr>,
 }
 
 impl DeriveEntity {
@@ -41,6 +42,7 @@ impl DeriveEntity {
 
         let table_name = sea_attr.table_name;
         let schema_name = sea_attr.schema_name;
+        let computed_fields = sea_attr.computed_fields;
 
         Ok(DeriveEntity {
             column_ident,
@@ -53,6 +55,7 @@ impl DeriveEntity {
             relation_ident,
             schema_name,
             table_name,
+            computed_fields,
         })
     }
 
@@ -108,8 +111,25 @@ impl DeriveEntity {
             column_ident,
             primary_key_ident,
             relation_ident,
+            computed_fields,
             ..
         } = self;
+
+        // When `#[sea_orm(computed_fields = "path::to::fn")]` is supplied, override
+        // `EntityTrait::computed_fields` so every `SELECT` of this entity
+        // auto-projects the formulas returned by that function.
+        let expanded_computed_fields = computed_fields
+            .as_ref()
+            .map(|lit| {
+                let path: TokenStream = syn::parse_str(&lit.value())
+                    .expect("computed_fields must be a path to a function");
+                quote! {
+                    fn computed_fields(&self) -> Vec<sea_orm::formula::ComputedField> {
+                        #path()
+                    }
+                }
+            })
+            .unwrap_or_default();
 
         quote!(
             #[automatically_derived]
@@ -127,6 +147,8 @@ impl DeriveEntity {
                 type PrimaryKey = #primary_key_ident;
 
                 type Relation = #relation_ident;
+
+                #expanded_computed_fields
             }
         )
     }

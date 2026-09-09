@@ -4,7 +4,7 @@
 use crate::entity::prelude::*;
 use crate::formula::{AggregateFunction, FormulaExt, Node, compile_to_expr};
 use crate::sea_query::PostgresQueryBuilder;
-use crate::tests_cfg::{customer, product, sale, sale_line};
+use crate::tests_cfg::{customer, double_row, product, sale, sale_line};
 use crate::{DbBackend, QueryTrait};
 
 /// Render a single formula node to Postgres SQL.
@@ -609,4 +609,38 @@ fn stacked_formulas_project() {
     assert!(sql.contains(r#"AS "b""#), "got: {sql}");
     // both formulas reference the customer root scope
     assert!(sql.contains(r#""customer"."id""#), "got: {sql}");
+}
+
+/// Auto-inclusion of computed fields (formulas) on `Entity::find()` and
+/// `Entity::find_by_id()`. `double_row` declares `value_doubled = value * 2`
+/// via `#[sea_orm(computed_fields = "computed_fields")]`, so the formula column
+/// must be projected automatically without any manual `.formula(..)` call.
+#[test]
+fn auto_include_computed_field_in_find() {
+    let sql = double_row::Entity::find()
+        .build(crate::DbBackend::Postgres)
+        .to_string();
+    assert!(
+        sql.starts_with(r#"SELECT "double_row"."id", "double_row"."value","#),
+        "base columns must come first, got: {sql}"
+    );
+    assert!(
+        sql.contains(r#"AS "value_doubled""#),
+        "computed field not auto-included in find(): {sql}"
+    );
+}
+
+#[test]
+fn auto_include_computed_field_in_find_by_id() {
+    let sql = double_row::Entity::find_by_id(7)
+        .build(crate::DbBackend::Postgres)
+        .to_string();
+    assert!(
+        sql.contains(r#"AS "value_doubled""#),
+        "computed field not auto-included in find_by_id(): {sql}"
+    );
+    assert!(
+        sql.contains(r#""double_row"."id" = 7"#),
+        "pk filter still applied, got: {sql}"
+    );
 }

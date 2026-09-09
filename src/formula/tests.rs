@@ -724,4 +724,33 @@ mod auto_include_acceptance {
             "auto-included computed field must be readable through FromQueryResult"
         );
     }
+
+    #[tokio::test]
+    async fn find_by_id_hydrates_auto_included_computed_field() {
+        use crate::{DbBackend, MockDatabase, Value};
+
+        let db = MockDatabase::new(DbBackend::Postgres)
+            .append_query_results([[maplit::btreemap! {
+                "id" => Into::<Value>::into(7i32),
+                "value" => Into::<Value>::into(6i32),
+                "value_doubled" => Into::<Value>::into(12i32),
+            }]])
+            .into_connection();
+
+        let row: Option<DoubleRowView> = double_row::Entity::find_by_id(7)
+            .into_model::<DoubleRowView>()
+            .one(&db)
+            .await
+            .expect("load double_row by id with computed field");
+
+        assert_eq!(
+            row,
+            Some(DoubleRowView {
+                id: 7,
+                value: 6,
+                value_doubled: 12,
+            }),
+            "find_by_id must hydrate the auto-included computed field"
+        );
+    }
 }

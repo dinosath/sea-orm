@@ -153,9 +153,17 @@ hydrated through the existing eager-load APIs (`find_with_related`, partial
 models), so this stays a "SELECT carries the columns" change: `find()` /
 `find_by_id()` continue to return `Vec<Model>` / `Option<Model>`.
 
-> **Note:** this auto-include hook is currently wired for entities derived with
-> `DeriveEntityModel` / `DeriveEntity`. Dense `#[sea_orm::model]` (`ModelEx`)
-> entities are not yet threaded through and are a follow-up.
+The opt-in works for both the classic `#[derive(DeriveEntityModel)]` form and
+the dense `#[sea_orm::model]` (`ModelEx`) form. On the dense form the computed
+field is carried in the same `#[sea_orm(...)]` attribute as the `ModelEx`
+wiring, e.g.:
+
+```rust,ignore
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "customer", computed_fields = "computed_fields")]
+pub struct Model { /* ... */ }
+```
 
 ## Relationship traversal and correlation
 

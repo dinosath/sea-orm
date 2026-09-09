@@ -25,6 +25,7 @@ pub mod vendor;
 
 pub mod comment;
 pub mod customer;
+pub mod dense_row;
 pub mod double_row;
 pub mod order;
 pub mod post;

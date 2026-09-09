@@ -4,7 +4,7 @@
 use crate::entity::prelude::*;
 use crate::formula::{AggregateFunction, FormulaExt, Node, compile_to_expr};
 use crate::sea_query::PostgresQueryBuilder;
-use crate::tests_cfg::{customer, double_row, product, sale, sale_line};
+use crate::tests_cfg::{customer, dense_row, double_row, product, sale, sale_line};
 use crate::{DbBackend, QueryTrait};
 
 /// Render a single formula node to Postgres SQL.
@@ -641,6 +641,39 @@ fn auto_include_computed_field_in_find_by_id() {
     );
     assert!(
         sql.contains(r#""double_row"."id" = 7"#),
+        "pk filter still applied, got: {sql}"
+    );
+}
+
+/// Dense `#[sea_orm::model]` (ModelEx) entities also auto-include computed
+/// fields on `find()` / `find_by_id()`. `dense_row` declares
+/// `value_tripled = value * 3` via `computed_fields = "computed_fields"`.
+#[test]
+fn auto_include_computed_field_in_dense_find() {
+    let sql = dense_row::Entity::find()
+        .build(crate::DbBackend::Postgres)
+        .to_string();
+    assert!(
+        sql.starts_with(r#"SELECT "dense_row"."id", "dense_row"."value","#),
+        "base columns must come first, got: {sql}"
+    );
+    assert!(
+        sql.contains(r#"AS "value_tripled""#),
+        "computed field not auto-included in dense find(): {sql}"
+    );
+}
+
+#[test]
+fn auto_include_computed_field_in_dense_find_by_id() {
+    let sql = dense_row::Entity::find_by_id(3)
+        .build(crate::DbBackend::Postgres)
+        .to_string();
+    assert!(
+        sql.contains(r#"AS "value_tripled""#),
+        "computed field not auto-included in dense find_by_id(): {sql}"
+    );
+    assert!(
+        sql.contains(r#""dense_row"."id" = 3"#),
         "pk filter still applied, got: {sql}"
     );
 }

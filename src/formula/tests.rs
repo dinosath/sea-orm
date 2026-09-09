@@ -677,3 +677,51 @@ fn auto_include_computed_field_in_dense_find_by_id() {
         "pk filter still applied, got: {sql}"
     );
 }
+
+/// End-to-end acceptance through SeaORM's public read path: run
+/// `double_row::Entity::find()` against a mock connection and hydrate the row
+/// (including the auto-included computed column) into a typed `FromQueryResult`
+/// view. This exercises the real query -> `FromQueryResult` mapping boundary the
+/// feature is consumed through, not just the generated SQL text.
+#[cfg(feature = "mock")]
+mod auto_include_acceptance {
+    use crate as sea_orm;
+    use crate::entity::prelude::*;
+    use crate::tests_cfg::double_row;
+
+    #[derive(Debug, PartialEq, crate::FromQueryResult)]
+    struct DoubleRowView {
+        id: i32,
+        value: i32,
+        value_doubled: i32,
+    }
+
+    #[tokio::test]
+    async fn find_hydrates_auto_included_computed_field() {
+        use crate::{DbBackend, MockDatabase, Value};
+
+        let db = MockDatabase::new(DbBackend::Postgres)
+            .append_query_results([[maplit::btreemap! {
+                "id" => Into::<Value>::into(1i32),
+                "value" => Into::<Value>::into(5i32),
+                "value_doubled" => Into::<Value>::into(10i32),
+            }]])
+            .into_connection();
+
+        let rows: Vec<DoubleRowView> = double_row::Entity::find()
+            .into_model::<DoubleRowView>()
+            .all(&db)
+            .await
+            .expect("load double_row with computed field");
+
+        assert_eq!(
+            rows,
+            [DoubleRowView {
+                id: 1,
+                value: 5,
+                value_doubled: 10,
+            }],
+            "auto-included computed field must be readable through FromQueryResult"
+        );
+    }
+}

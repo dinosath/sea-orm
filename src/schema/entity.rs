@@ -3,8 +3,8 @@ use crate::{
     PrimaryKeyArity, PrimaryKeyToColumn, PrimaryKeyTrait, RelationTrait, Schema,
 };
 use sea_query::{
-    ColumnDef, DynIden, Iden, Index, IndexCreateStatement, SeaRc, TableCreateStatement, TableName,
-    TableRef,
+    ColumnDef, DynIden, Expr, Iden, Index, IndexCreateStatement, SeaRc, TableCreateStatement,
+    TableName, TableRef,
     extension::postgres::{Type, TypeCreateStatement},
 };
 use std::collections::BTreeMap;
@@ -247,10 +247,16 @@ where
                 ColumnType::custom(format!("ENUM('{}')", variants.join("', '")))
             }
             DbBackend::Postgres => ColumnType::Custom(name.clone()),
-            DbBackend::Sqlite => orm_column_def.col_type,
+            DbBackend::Sqlite => orm_column_def.col_type.clone(),
         },
-        _ => orm_column_def.col_type,
+        _ => orm_column_def.col_type.clone(),
     };
+    let extra = orm_column_def.extra.clone();
+    let column_definition = orm_column_def.get_column_definition().map(str::to_string);
+    let generated_expression = orm_column_def
+        .get_generated_expression()
+        .map(str::to_string);
+    let generated_stored = orm_column_def.is_generated_stored();
     let mut column_def = ColumnDef::new_with_type(column, types);
     if !orm_column_def.null {
         column_def.not_null();
@@ -264,8 +270,24 @@ where
     if let Some(comment) = &orm_column_def.comment {
         column_def.comment(comment);
     }
-    if let Some(extra) = &orm_column_def.extra {
-        column_def.extra(extra);
+    // Raw, database-specific column DDL: either the generic `extra` escape
+    // hatch or the `column_definition` generated-column escape hatch.
+    match (extra.as_deref(), column_definition.as_deref()) {
+        (Some(extra), Some(definition)) => {
+            column_def.extra(format!("{extra} {definition}").as_str());
+        }
+        (Some(extra), None) => {
+            column_def.extra(extra);
+        }
+        (None, Some(definition)) => {
+            column_def.extra(definition);
+        }
+        (None, None) => {}
+    }
+    // Portable generated-column expression, rendered by SeaQuery per backend
+    // as `GENERATED ALWAYS AS (expr) STORED` / `VIRTUAL`.
+    if let Some(expression) = generated_expression {
+        column_def.generated(Expr::cust(expression), generated_stored);
     }
     match (&orm_column_def.renamed_from, &orm_column_def.comment) {
         (Some(renamed_from), Some(comment)) => {

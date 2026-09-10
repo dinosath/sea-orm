@@ -109,6 +109,10 @@ impl Update {
             if <A::Entity as EntityTrait>::PrimaryKey::from_column(col).is_some() {
                 continue;
             }
+            // The database owns generated-on-update columns; never write them in SET.
+            if col.is_generated() {
+                continue;
+            }
             match myself.model.get(col) {
                 ActiveValue::Set(value) => {
                     let expr = col.save_as(Expr::val(value));
@@ -215,6 +219,10 @@ where
         A: ActiveModelTrait<Entity = E>,
     {
         for col in E::Column::iter() {
+            // Generated-on-update columns are managed by the database.
+            if col.is_generated() {
+                continue;
+            }
             match model.get(col) {
                 ActiveValue::Set(value) => {
                     let expr = col.save_as(Expr::val(value));

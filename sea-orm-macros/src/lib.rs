@@ -143,6 +143,81 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
 /// #
 /// # impl ActiveModelBehavior for ActiveModel {}
 /// ```
+///
+/// ### Database-generated columns
+///
+/// A column can be marked as database-generated with `generated`, which is
+/// **ORM lifecycle metadata**: the database owns the value and SeaORM must never
+/// write it. Generated columns are omitted from `INSERT` and `UPDATE`, and their
+/// value is fetched back from the database afterwards (via `RETURNING` where
+/// supported, or an extra `SELECT` otherwise).
+///
+/// ```text
+/// generated
+///     = ORM persistence behavior (database owns the value)
+///
+/// column_definition / generated_expression
+///     = schema/DDL behavior (how the database creates the column)
+/// ```
+///
+/// `generated` accepts `"insert"`, `"update"` or `"always"`, describing when the
+/// database (re)computes the value:
+///
+/// - `"insert"` — generated on `INSERT`
+/// - `"update"` — recalculated on `UPDATE`
+/// - `"always"` — generated on both
+///
+/// The schema-generation attributes are optional and independent of `generated`:
+///
+/// - `generated_expression = "..."` emits the portable
+///   `GENERATED ALWAYS AS (...) STORED` form (PostgreSQL, MySQL, MariaDB,
+///   SQLite). Use `generated_stored = false` for `VIRTUAL`.
+/// - `column_definition = "..."` appends raw, database-specific column DDL
+///   verbatim. This is the escape hatch equivalent to Hibernate's
+///   `columnDefinition`; SeaORM does not parse it.
+///
+/// ```
+/// use sea_orm::entity::prelude::*;
+///
+/// #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+/// #[sea_orm(table_name = "customer")]
+/// pub struct Model {
+///     #[sea_orm(primary_key)]
+///     pub id: i32,
+///     pub first_name: Option<String>,
+///     pub last_name: Option<String>,
+///     // Database-first: map an existing generated column.
+///     #[sea_orm(generated = "always")]
+///     pub full_name: String,
+///     // Entity-first with a portable expression.
+///     #[sea_orm(
+///         generated = "always",
+///         generated_expression = "first_name || ' ' || last_name"
+///     )]
+///     pub display_name: String,
+/// }
+///
+/// # #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+/// # pub enum Relation {}
+/// #
+/// # impl ActiveModelBehavior for ActiveModel {}
+/// ```
+///
+/// A generated primary key must set `auto_increment = false`; `generated` cannot
+/// be combined with `default_value` or `default_expr`.
+///
+/// ### Bulk operations and dialects
+///
+/// `insert_many` / `update_many` respect the same rules: generated columns are
+/// left out of the insert column list and out of `SET`. `insert_many` cannot
+/// report per-row generated values, so read the rows back (for example with
+/// `Entity::find`) if you need them; a single `insert` / `update` refreshes the
+/// generated values on the returned model.
+///
+/// `generated_expression` maps to the `GENERATED ALWAYS AS (...) STORED|VIRTUAL`
+/// syntax shared by PostgreSQL, MySQL, MariaDB and SQLite. For a dialect whose
+/// syntax differs (for example SQL Server computed columns), use
+/// `column_definition` and provide the raw DDL yourself.
 #[cfg(feature = "derive")]
 #[proc_macro_derive(DeriveEntityModel, attributes(sea_orm, seaography))]
 pub fn derive_entity_model(input: TokenStream) -> TokenStream {

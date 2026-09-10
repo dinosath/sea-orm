@@ -96,6 +96,24 @@ pub trait ColumnTrait: IdenStatic + Iterable + FromStr {
     /// SQL type and constraints attached to this column.
     fn def(&self) -> ColumnDef;
 
+    /// Returns `true` if the database owns the value of this column.
+    ///
+    /// Generated columns are omitted from `INSERT` / `UPDATE` according to
+    /// [`Self::generated_on_insert`] and [`Self::generated_on_update`].
+    fn is_generated(&self) -> bool {
+        self.def().is_generated()
+    }
+
+    /// Returns `true` if this column must be omitted from `INSERT`.
+    fn generated_on_insert(&self) -> bool {
+        self.def().generated_on_insert()
+    }
+
+    /// Returns `true` if this column must be omitted from `UPDATE`.
+    fn generated_on_update(&self) -> bool {
+        self.def().generated_on_update()
+    }
+
     /// If the column maps to a database `ENUM`, the enum's type name.
     /// Returns `None` for non-enum columns.
     fn enum_type_name(&self) -> Option<&'static str> {
@@ -563,6 +581,10 @@ impl ColumnTypeTrait for ColumnType {
             renamed_from: None,
             extra: None,
             seaography: Default::default(),
+            generated: None,
+            generated_expression: None,
+            generated_stored: true,
+            column_definition: None,
         }
     }
 

@@ -24,6 +24,38 @@ pub struct ColumnDef {
     pub(crate) renamed_from: Option<String>,
     pub(crate) extra: Option<String>,
     pub(crate) seaography: SeaographyColumnAttr,
+    pub(crate) generated: Option<GeneratedColumn>,
+    pub(crate) generated_expression: Option<String>,
+    pub(crate) generated_stored: bool,
+    pub(crate) column_definition: Option<String>,
+}
+
+/// Which write statements the database owns the value of a generated column for.
+///
+/// This is ORM lifecycle metadata: it tells SeaORM when the database, rather
+/// than the application, produces the column value. It is deliberately separate
+/// from [`ColumnDef::column_definition`] / [`ColumnDef::generated_expression`],
+/// which describe how the column is created in `CREATE TABLE`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeneratedColumn {
+    /// The database generates the value on `INSERT`.
+    Insert,
+    /// The database generates/recalculates the value on `UPDATE`.
+    Update,
+    /// The database owns the value and generates it on both `INSERT` and `UPDATE`.
+    Always,
+}
+
+impl GeneratedColumn {
+    /// Whether this column must be omitted from `INSERT`.
+    pub fn is_generated_on_insert(self) -> bool {
+        matches!(self, Self::Insert | Self::Always)
+    }
+
+    /// Whether this column must be omitted from `UPDATE`.
+    pub fn is_generated_on_update(self) -> bool {
+        matches!(self, Self::Update | Self::Always)
+    }
 }
 
 /// Column-level attributes consumed by [Seaography](https://github.com/SeaQL/seaography)
@@ -107,6 +139,58 @@ impl ColumnDef {
         self
     }
 
+    /// Mark this column as database-generated for the given lifecycle.
+    ///
+    /// This only affects ORM persistence: the column is omitted from the
+    /// corresponding `INSERT` / `UPDATE` statements and its value is expected to
+    /// be produced by the database. It does not by itself describe how the
+    /// column is created; use [`ColumnDef::column_definition`] or
+    /// [`ColumnDef::generated_expression`] for schema generation.
+    pub fn generated(mut self, generated: GeneratedColumn) -> Self {
+        self.generated = Some(generated);
+        self
+    }
+
+    /// Set the portable generated-column expression (without the surrounding
+    /// `GENERATED ALWAYS AS (...)`), used by schema generation.
+    ///
+    /// This is rendered as `GENERATED ALWAYS AS (<expr>) STORED` (or `VIRTUAL`,
+    /// see [`ColumnDef::generated_stored`]) and is supported by PostgreSQL,
+    /// MySQL, MariaDB and SQLite. For syntax that cannot be expressed this way,
+    /// use [`ColumnDef::column_definition`] instead.
+    pub fn generated_expression(mut self, expr: &str) -> Self {
+        self.generated_expression = Some(expr.into());
+        self
+    }
+
+    /// Choose between `STORED` (default) and `VIRTUAL` for
+    /// [`ColumnDef::generated_expression`].
+    pub fn generated_stored(mut self, stored: bool) -> Self {
+        self.generated_stored = stored;
+        self
+    }
+
+    /// Set raw, database-specific column DDL appended verbatim after the column
+    /// type and other clauses.
+    ///
+    /// This is the escape hatch equivalent to Hibernate's `columnDefinition`.
+    /// SeaORM never parses or interprets the string. For example, to express a
+    /// SQL Server computed column:
+    ///
+    /// ```text
+    /// #[sea_orm(generated = "always", column_definition = "AS (CONCAT(first_name, ' ', last_name))")]
+    /// ```
+    ///
+    /// or a PostgreSQL generated column:
+    ///
+    /// ```text
+    /// #[sea_orm(generated = "always", column_definition = "GENERATED ALWAYS AS (first_name || ' ' || last_name) STORED")]
+    /// ```
+    pub fn column_definition(mut self, definition: &str) -> Self {
+        self.column_definition = Some(definition.into());
+        self
+    }
+
     /// Get [ColumnType] as reference
     pub fn get_column_type(&self) -> &ColumnType {
         &self.col_type
@@ -125,6 +209,44 @@ impl ColumnDef {
     /// Returns true if the column is unique
     pub fn is_unique(&self) -> bool {
         self.unique
+    }
+
+    /// The generation lifecycle of this column, if it is database-generated.
+    pub fn get_generated(&self) -> Option<GeneratedColumn> {
+        self.generated
+    }
+
+    /// Returns true if the database owns the value of this column.
+    pub fn is_generated(&self) -> bool {
+        self.generated.is_some()
+    }
+
+    /// Returns true if this column must be omitted from `INSERT`.
+    pub fn generated_on_insert(&self) -> bool {
+        self.generated
+            .is_some_and(GeneratedColumn::is_generated_on_insert)
+    }
+
+    /// Returns true if this column must be omitted from `UPDATE`.
+    pub fn generated_on_update(&self) -> bool {
+        self.generated
+            .is_some_and(GeneratedColumn::is_generated_on_update)
+    }
+
+    /// The portable generated-column expression, if one is set.
+    pub fn get_generated_expression(&self) -> Option<&str> {
+        self.generated_expression.as_deref()
+    }
+
+    /// Whether the generated expression is materialized (`STORED`, the default)
+    /// or computed on read (`VIRTUAL`).
+    pub fn is_generated_stored(&self) -> bool {
+        self.generated_stored
+    }
+
+    /// The raw, database-specific column DDL, if one is set.
+    pub fn get_column_definition(&self) -> Option<&str> {
+        self.column_definition.as_deref()
     }
 
     /// Get Seaography attribute

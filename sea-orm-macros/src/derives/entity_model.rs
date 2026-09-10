@@ -209,6 +209,10 @@ pub fn expand_derive_entity_model(
                     let mut is_auto_increment = false;
                     let mut extra = None;
                     let mut seaography_ignore = false;
+                    let mut generated: Option<TokenStream> = None;
+                    let mut column_definition: Option<String> = None;
+                    let mut generated_expression: Option<String> = None;
+                    let mut generated_stored: Option<bool> = None;
                     #[cfg(feature = "with-json")]
                     let mut serde_rename: Option<String> = None;
 
@@ -333,6 +337,55 @@ pub fn expand_derive_entity_model(
                                         extra = Some(litstr.value());
                                     } else {
                                         return Err(meta.error(format!("Invalid extra {lit:?}")));
+                                    }
+                                } else if meta.path.is_ident("generated") {
+                                    let lit = meta.value()?.parse()?;
+                                    if let Lit::Str(litstr) = lit {
+                                        let variant = match litstr.value().as_str() {
+                                            "insert" => quote! {
+                                                sea_orm::entity::GeneratedColumn::Insert
+                                            },
+                                            "update" => quote! {
+                                                sea_orm::entity::GeneratedColumn::Update
+                                            },
+                                            "always" => quote! {
+                                                sea_orm::entity::GeneratedColumn::Always
+                                            },
+                                            other => {
+                                                return Err(meta.error(format!(
+                                                    "Invalid generated = {other:?}; expected \"insert\", \"update\" or \"always\""
+                                                )));
+                                            }
+                                        };
+                                        generated = Some(variant);
+                                    } else {
+                                        return Err(meta.error(format!("Invalid generated {lit:?}")));
+                                    }
+                                } else if meta.path.is_ident("column_definition") {
+                                    let lit = meta.value()?.parse()?;
+                                    if let Lit::Str(litstr) = lit {
+                                        column_definition = Some(litstr.value());
+                                    } else {
+                                        return Err(
+                                            meta.error(format!("Invalid column_definition {lit:?}"))
+                                        );
+                                    }
+                                } else if meta.path.is_ident("generated_expression") {
+                                    let lit = meta.value()?.parse()?;
+                                    if let Lit::Str(litstr) = lit {
+                                        generated_expression = Some(litstr.value());
+                                    } else {
+                                        return Err(meta
+                                            .error(format!("Invalid generated_expression {lit:?}")));
+                                    }
+                                } else if meta.path.is_ident("generated_stored") {
+                                    let lit = meta.value()?.parse()?;
+                                    if let Lit::Bool(litbool) = lit {
+                                        generated_stored = Some(litbool.value());
+                                    } else {
+                                        return Err(
+                                            meta.error(format!("Invalid generated_stored {lit:?}"))
+                                        );
                                     }
                                 } else {
                                     consume_meta(meta);
@@ -467,6 +520,29 @@ pub fn expand_derive_entity_model(
                         }
                     }
 
+                    if generated.is_some() {
+                        if default_value.is_some() || default_expr.is_some() {
+                            return Err(syn::Error::new_spanned(
+                                ident,
+                                "`generated` cannot be combined with `default_value` or `default_expr`, \
+                                 because the database owns the value of a generated column",
+                            ));
+                        }
+                        if is_primary_key && auto_increment != Some(false) {
+                            return Err(syn::Error::new_spanned(
+                                ident,
+                                "a generated primary key cannot be auto-incremented; \
+                                 set `auto_increment = false` explicitly",
+                            ));
+                        }
+                    }
+                    if generated_stored.is_some() && generated_expression.is_none() {
+                        return Err(syn::Error::new_spanned(
+                            ident,
+                            "`generated_stored` requires `generated_expression`",
+                        ));
+                    }
+
                     let sea_query_col_type =
                         super::value_type_match::column_type_expr(sql_type, field_type, field_span);
 
@@ -503,6 +579,19 @@ pub fn expand_derive_entity_model(
                     }
                     if let Some(extra) = extra {
                         match_row = quote! { #match_row.extra(#extra) };
+                    }
+                    if let Some(generated) = generated {
+                        match_row = quote! { #match_row.generated(#generated) };
+                    }
+                    if let Some(generated_expression) = generated_expression {
+                        match_row =
+                            quote! { #match_row.generated_expression(#generated_expression) };
+                    }
+                    if let Some(generated_stored) = generated_stored {
+                        match_row = quote! { #match_row.generated_stored(#generated_stored) };
+                    }
+                    if let Some(column_definition) = column_definition {
+                        match_row = quote! { #match_row.column_definition(#column_definition) };
                     }
                     // match_row = quote! { #match_row.comment() };
                     columns_trait.push(match_row);
@@ -631,4 +720,197 @@ pub fn expand_derive_entity_model(
 
         #primary_key
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use syn::DeriveInput;
+
+    fn expand(input: &str) -> syn::Result<TokenStream> {
+        let input: DeriveInput = syn::parse_str(input).unwrap();
+        expand_derive_entity_model(&input.vis, &input.data, &input.attrs)
+    }
+
+    #[test]
+    fn generated_accepts_valid_values() {
+        for value in ["insert", "update", "always"] {
+            let input = format!(
+                r#"
+                #[sea_orm(table_name = "t")]
+                struct Model {{
+                    #[sea_orm(primary_key)]
+                    id: i32,
+                    #[sea_orm(generated = "{value}", column_definition = "AS (1)")]
+                    full_name: String,
+                }}
+                "#
+            );
+            assert!(expand(&input).is_ok(), "generated = {value:?} should parse");
+        }
+    }
+
+    #[test]
+    fn generated_rejects_invalid_value() {
+        let err = expand(
+            r#"
+            #[sea_orm(table_name = "t")]
+            struct Model {
+                #[sea_orm(primary_key)]
+                id: i32,
+                #[sea_orm(generated = "sometimes")]
+                full_name: String,
+            }
+            "#,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid generated"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn generated_rejects_default_value() {
+        let err = expand(
+            r#"
+            #[sea_orm(table_name = "t")]
+            struct Model {
+                #[sea_orm(primary_key)]
+                id: i32,
+                #[sea_orm(generated = "always", default_value = "x")]
+                full_name: String,
+            }
+            "#,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("default_value"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn generated_rejects_auto_increment() {
+        let err = expand(
+            r#"
+            #[sea_orm(table_name = "t")]
+            struct Model {
+                #[sea_orm(primary_key, generated = "always")]
+                id: i32,
+            }
+            "#,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("auto_increment"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn generated_primary_key_allows_explicit_no_auto_increment() {
+        assert!(
+            expand(
+                r#"
+                #[sea_orm(table_name = "t")]
+                struct Model {
+                    #[sea_orm(primary_key, auto_increment = false, generated = "always")]
+                    id: i32,
+                }
+                "#
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn generated_stored_requires_expression() {
+        let err = expand(
+            r#"
+            #[sea_orm(table_name = "t")]
+            struct Model {
+                #[sea_orm(primary_key)]
+                id: i32,
+                #[sea_orm(generated = "always", generated_stored = false)]
+                full_name: String,
+            }
+            "#,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("generated_stored"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn column_definition_alone_is_allowed() {
+        assert!(
+            expand(
+                r#"
+                #[sea_orm(table_name = "t")]
+                struct Model {
+                    #[sea_orm(primary_key)]
+                    id: i32,
+                    #[sea_orm(column_definition = "AS (1)")]
+                    full_name: String,
+                }
+                "#
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn generated_requires_a_value() {
+        assert!(
+            expand(
+                r#"
+                #[sea_orm(table_name = "t")]
+                struct Model {
+                    #[sea_orm(primary_key)]
+                    id: i32,
+                    #[sea_orm(generated)]
+                    full_name: String,
+                }
+                "#
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn generated_string_primary_key_infers_no_auto_increment() {
+        assert!(
+            expand(
+                r#"
+                #[sea_orm(table_name = "t")]
+                struct Model {
+                    #[sea_orm(primary_key, generated = "always")]
+                    id: String,
+                }
+                "#
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn generated_expression_and_stored_combinations() {
+        assert!(
+            expand(
+                r#"
+                #[sea_orm(table_name = "t")]
+                struct Model {
+                    #[sea_orm(primary_key)]
+                    id: i32,
+                    #[sea_orm(generated = "always", generated_expression = "1 + 1", generated_stored = false)]
+                    value: i32,
+                }
+                "#
+            )
+            .is_ok()
+        );
+    }
 }

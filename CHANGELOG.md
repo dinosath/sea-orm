@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [Unreleased](changelog/2.0.3.md)
+
+Database-generated columns: `#[sea_orm(generated = "insert" | "update" | "always")]` marks a database-owned column that is omitted from `INSERT`/`UPDATE` and refreshed afterwards; `column_definition` / `generated_expression` describe the generated-column DDL for entity-first schema generation
+
 ## [2.0.2](changelog/2.0.2.md) - 2026-08-12
 
 `require_one` query helper, `date_time_default_now` / `timestamp_default_now` schema helpers, entity-merge duplicate-import fix

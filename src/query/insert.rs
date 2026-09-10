@@ -105,6 +105,11 @@ where
         let mut values = Vec::new();
 
         for col in <A::Entity as EntityTrait>::Column::iter() {
+            // The database owns generated columns; they must never be part of
+            // the INSERT column list, even if the ActiveModel carries a value.
+            if col.is_generated() {
+                continue;
+            }
             let av = am.take(col);
 
             match av {
@@ -333,6 +338,11 @@ where
                 };
             let mut values = Vec::with_capacity(columns.len());
             for (idx, col) in <A::Entity as EntityTrait>::Column::iter().enumerate() {
+                // Generated-on-insert columns are never part of the column list.
+                if col.is_generated() {
+                    values.push(SimpleExpr::Keyword(Keyword::Null));
+                    continue;
+                }
                 let av = am.take(col);
                 match av {
                     ActiveValue::Set(value) | ActiveValue::Unchanged(value) => {
